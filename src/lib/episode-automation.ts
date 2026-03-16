@@ -73,18 +73,16 @@ async function getWatchlistCandidatesForDate(
   const plexData = await plexRes.json();
   const allShows = plexData.MediaContainer?.Metadata || [];
 
-  const tmdbIds: string[] = [
-    ...new Set(
-      allShows
-        .map((show: { Guid?: { id?: string }[] }) => {
-          const tmdbGuid = (show.Guid || []).find((g) =>
-            g.id?.startsWith("tmdb://"),
-          );
-          return tmdbGuid?.id ? tmdbGuid.id.replace("tmdb://", "") : null;
-        })
-        .filter((id: string | null): id is string => Boolean(id)),
-    ),
-  ];
+  const extractedTmdbIds = allShows
+    .map((show: { Guid?: { id?: string }[] }) => {
+      const tmdbGuid = (show.Guid || []).find((g) =>
+        g.id?.startsWith("tmdb://"),
+      );
+      return tmdbGuid?.id ? tmdbGuid.id.replace("tmdb://", "") : null;
+    })
+    .filter((id: string | null): id is string => Boolean(id));
+
+  const tmdbIds = [...new Set<string>(extractedTmdbIds)];
 
   const details = await Promise.all(
     tmdbIds.map(async (tmdbId) => {
