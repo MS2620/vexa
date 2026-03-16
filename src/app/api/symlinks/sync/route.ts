@@ -16,8 +16,14 @@ function parseTorrentName(filename: string): ParsedName {
   // Strip common video file extensions (e.g. "Shrek (2001).mkv")
   let s = filename.replace(/\.(mkv|mp4|avi|mov|wmv|m4v|ts|iso)$/i, "");
 
-  // Strip site watermark prefixes: "[ Torrent911.si ]", "[www.site.com]"
+  // Strip site watermark prefixes in square brackets: "[ Torrent911.si ]", "[www.site.com]"
   s = s.replace(/^\[[\w\s.:-]+\]\s*/, "");
+
+  // Strip URL-style prefixes without brackets: "www.UIndex.org - "
+  s = s.replace(/^\S+\.[a-z]{2,6}\s*[-–—]\s*/i, "");
+
+  // Strip Chinese/full-width bracket prefixes: "【高清剧集网 www.site.com】"
+  s = s.replace(/^【[^】]*】\s*/, "");
 
   // Normalise dots/underscores to spaces
   s = s.replace(/[._]/g, " ").trim();
@@ -28,34 +34,67 @@ function parseTorrentName(filename: string): ParsedName {
   // Collapse multiple spaces
   s = s.replace(/\s{2,}/g, " ").trim();
 
+  // TV — S01-S04 multi-season range: "ShowName S01-S04"
+  const multiSeason = s.match(/^(.+?)\s+[Ss](\d{1,2})-[Ss]\d{1,2}/i);
+  if (multiSeason)
+    return {
+      title: cleanTvTitle(cleanTitle(multiSeason[1])),
+      year: null,
+      mediaType: "tv",
+      season: parseInt(multiSeason[2]),
+    };
+
   // TV — episode marker: ShowName S01E01
   const sxex = s.match(/^(.+?)\s+[Ss](\d{1,2})[Ee]\d{1,2}/i);
-  if (sxex) {
-    // Strip a trailing year that may have been captured in the show title:
-    // bare year (e.g. "S W A T 2017") or parenthesised (e.g. "The Blacklist (2013)")
-    const tvTitle = cleanTitle(sxex[1])
-      .replace(/\s+\((?:19|20)\d{2}\)$/, "")
-      .replace(/\s+(?:19|20)\d{2}$/, "")
-      .trim();
-    return { title: tvTitle, year: null, mediaType: "tv", season: parseInt(sxex[2]) };
+  if (sxex)
+    return {
+      title: cleanTvTitle(cleanTitle(sxex[1])),
+      year: null,
+      mediaType: "tv",
+      season: parseInt(sxex[2]),
+    };
+
+  // TV — (Season N) or (S03) in parentheses: "The Rookie (Season 3)", "The Blacklist (S03)"
+  const parenSeason = s.match(
+    /^(.+?)\s+\((?:[Ss]eason\s+(\d{1,2})|[Ss](\d{2}))\)/i,
+  );
+  if (parenSeason) {
+    const season = parseInt(parenSeason[2] ?? parenSeason[3]);
+    if (!isNaN(season))
+      return {
+        title: cleanTvTitle(cleanTitle(parenSeason[1])),
+        year: null,
+        mediaType: "tv",
+        season,
+      };
   }
 
-  // TV — season pack: ShowName Season 2 / ShowName S02
+  // TV — bare season pack: ShowName Season 2 / ShowName S02
   const pack = s.match(
     /^(.+?)\s+(?:[Ss]eason\s+(\d{1,2})|[Ss](\d{2})(?:\s|$))/i,
   );
   if (pack) {
     const season = parseInt(pack[2] ?? pack[3]);
-    if (!isNaN(season)) {
-      const tvTitle = cleanTitle(pack[1])
-        .replace(/\s+\((?:19|20)\d{2}\)$/, "")
-        .replace(/\s+(?:19|20)\d{2}$/, "")
-        .trim();
-      return { title: tvTitle, year: null, mediaType: "tv", season };
-    }
+    if (!isNaN(season))
+      return {
+        title: cleanTvTitle(cleanTitle(pack[1])),
+        year: null,
+        mediaType: "tv",
+        season,
+      };
   }
 
-  // Movie — year inside parentheses, possibly with extra content: "Title (2001)" or "Title (2001 ITA-ENG)"
+  // Movie — year in square brackets: "Despicable Me 4 [2024]"
+  const withYearSquare = s.match(/^(.+?)\s+\[((?:19|20)\d{2})\]/);
+  if (withYearSquare)
+    return {
+      title: cleanTitle(withYearSquare[1]),
+      year: withYearSquare[2],
+      mediaType: "movie",
+      season: null,
+    };
+
+  // Movie — year inside parentheses: "Title (2001)" or "Title (2001 ITA-ENG)"
   const withYearParen = s.match(/^(.+?)\s+\(((?:19|20)\d{2})[^)]*\)/);
   if (withYearParen)
     return {
@@ -86,6 +125,18 @@ function cleanTitle(s: string): string {
       /\b(4k|uhd|hdr|dv|bluray|blu.ray|remux|web.dl|webrip|hdtv|dvdrip|xvid|x264|x265|hevc|h264|h265|aac|dts|dolby|atmos|truehd|multi|complete|proper|repack|extended|theatrical|directors.cut)\b.*/gi,
       "",
     )
+    .trim();
+}
+
+// Additional cleanup for TV show titles: strips absorbed years, "Season" keyword, dashes
+function cleanTvTitle(s: string): string {
+  return s
+    .replace(/\s+\((?:19|20)\d{2}\)/g, "") // strip (year) anywhere in title
+    .replace(/\s+(?:19|20)\d{2}$/, "") // strip trailing bare year
+    .replace(/\b[Ss]eason\b\s*$/g, "") // strip trailing "Season" word
+    .replace(/[^\x00-\x7F]+/g, "") // strip non-ASCII (e.g. Chinese chars)
+    .replace(/\s*[-–—]\s*$/, "") // strip trailing " - "
+    .replace(/\s{2,}/g, " ")
     .trim();
 }
 
@@ -157,6 +208,28 @@ export async function POST() {
             );
             const infoData: { filename: string; files: RDFile[] } =
               await infoRes.json();
+
+            // Skip multi-title packs — can't map to a single TMDB entry
+            if (
+              /\b(collection|saga|pack|anthology|trilogy|quadrilogy|franchise|universe)\b/i.test(
+                infoData.filename,
+              ) ||
+              /\b\d+\s*[,&]\s*\d+\b/.test(infoData.filename) // e.g. "Shrek 1,2,3,4"
+            ) {
+              skipped++;
+              send(ctrl, {
+                type: "item",
+                status: "skipped",
+                filename: infoData.filename,
+                reason: "Multi-title collection — skipped",
+              });
+              send(ctrl, {
+                type: "progress",
+                current: i + 1,
+                total: downloaded.length,
+              });
+              continue;
+            }
 
             const parsed = parseTorrentName(infoData.filename);
             const match = await searchTMDB(
