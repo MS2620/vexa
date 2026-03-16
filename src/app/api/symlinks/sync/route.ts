@@ -20,7 +20,8 @@ function parseTorrentName(filename: string): ParsedName {
   s = s.replace(/^\[[\w\s.:-]+\]\s*/, "");
 
   // Strip URL-style prefixes without brackets: "www.UIndex.org - "
-  s = s.replace(/^\S+\.[a-z]{2,6}\s*[-–—]\s*/i, "");
+  // Keep this strict to avoid eating normal dotted scene names before tokens like "WEB-DL".
+  s = s.replace(/^(?:https?:\/\/)?www\.[\w.-]+\.[a-z]{2,6}\s*[-–—|]\s*/i, "");
 
   // Strip Chinese/full-width bracket prefixes: "【高清剧集网 www.site.com】"
   s = s.replace(/^【[^】]*】\s*/, "");
@@ -132,10 +133,10 @@ function cleanTitle(s: string): string {
 function cleanTvTitle(s: string): string {
   return s
     .replace(/\s+\((?:19|20)\d{2}\)/g, "") // strip (year) anywhere in title
-    .replace(/\b[Ss]eason\b\s*$/g, "")      // strip trailing "Season" BEFORE year strip
-    .replace(/\s+(?:19|20)\d{2}$/, "")      // then strip trailing bare year
-    .replace(/[^\x00-\x7F]+/g, "")          // strip non-ASCII (e.g. Chinese chars)
-    .replace(/\s*[-–—]\s*$/, "")            // strip trailing " - "
+    .replace(/\b[Ss]eason\b\s*$/g, "") // strip trailing "Season" BEFORE year strip
+    .replace(/\s+(?:19|20)\d{2}$/, "") // then strip trailing bare year
+    .replace(/[^\x00-\x7F]+/g, "") // strip non-ASCII (e.g. Chinese chars)
+    .replace(/\s*[-–—]\s*$/, "") // strip trailing " - "
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -146,9 +147,36 @@ async function searchTMDB(
   mediaType: "movie" | "tv",
   tmdbKey: string,
 ): Promise<{ id: number; title: string } | null> {
-  const doSearch = async (includeYear: boolean) => {
-    const params = new URLSearchParams({ query: title, api_key: tmdbKey });
-    if (includeYear && year) params.set("year", year);
+  const buildQueryVariants = (rawTitle: string): string[] => {
+    const queries = new Set<string>();
+    const base = rawTitle.trim();
+    if (base) queries.add(base);
+
+    // "Law and Order" <-> "Law & Order"
+    if (/\band\b/i.test(base)) queries.add(base.replace(/\band\b/gi, "&"));
+    if (base.includes("&")) queries.add(base.replace(/\s*&\s*/g, " and "));
+
+    // "Chicago P D" -> "Chicago P.D."
+    queries.add(
+      base.replace(
+        /\b([A-Za-z])\s+([A-Za-z])(\s+([A-Za-z]))?\b/g,
+        (_, a, b, _grp, c) => {
+          return c ? `${a}.${b}.${c}.` : `${a}.${b}.`;
+        },
+      ),
+    );
+
+    // Remove apostrophes for alternate matching
+    queries.add(base.replace(/[’']/g, ""));
+
+    return [...queries].filter(Boolean);
+  };
+
+  const doSearch = async (query: string, includeYear: boolean) => {
+    const params = new URLSearchParams({ query, api_key: tmdbKey });
+    if (includeYear && year) {
+      params.set(mediaType === "movie" ? "year" : "first_air_date_year", year);
+    }
     const res = await fetch(
       `https://api.themoviedb.org/3/search/${mediaType}?${params}`,
     );
@@ -156,10 +184,20 @@ async function searchTMDB(
     return data.results?.[0] ?? null;
   };
 
-  // Try with year first, fall back to without year
-  const result = (await doSearch(true)) ?? (await doSearch(false));
-  if (!result) return null;
-  return { id: result.id, title: result.title ?? result.name };
+  const queries = buildQueryVariants(title);
+
+  // Try with year first, then without year, across query variants
+  for (const query of queries) {
+    const result = await doSearch(query, true);
+    if (result) return { id: result.id, title: result.title ?? result.name };
+  }
+
+  for (const query of queries) {
+    const result = await doSearch(query, false);
+    if (result) return { id: result.id, title: result.title ?? result.name };
+  }
+
+  return null;
 }
 
 export async function POST() {
