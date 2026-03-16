@@ -31,8 +31,10 @@ function parseTorrentName(filename: string): ParsedName {
   // TV — episode marker: ShowName S01E01
   const sxex = s.match(/^(.+?)\s+[Ss](\d{1,2})[Ee]\d{1,2}/i);
   if (sxex) {
-    // Strip a trailing year that dot-normalisation may have placed in the show title (e.g. "S W A T 2017")
+    // Strip a trailing year that may have been captured in the show title:
+    // bare year (e.g. "S W A T 2017") or parenthesised (e.g. "The Blacklist (2013)")
     const tvTitle = cleanTitle(sxex[1])
+      .replace(/\s+\((?:19|20)\d{2}\)$/, "")
       .replace(/\s+(?:19|20)\d{2}$/, "")
       .trim();
     return { title: tvTitle, year: null, mediaType: "tv", season: parseInt(sxex[2]) };
@@ -46,6 +48,7 @@ function parseTorrentName(filename: string): ParsedName {
     const season = parseInt(pack[2] ?? pack[3]);
     if (!isNaN(season)) {
       const tvTitle = cleanTitle(pack[1])
+        .replace(/\s+\((?:19|20)\d{2}\)$/, "")
         .replace(/\s+(?:19|20)\d{2}$/, "")
         .trim();
       return { title: tvTitle, year: null, mediaType: "tv", season };
