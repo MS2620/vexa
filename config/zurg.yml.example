@@ -1,0 +1,18 @@
+zurg: v1
+
+# Replace with your Real-Debrid API token
+# Get it from: https://real-debrid.com/apitoken
+token: YOUR_REAL_DEBRID_TOKEN_HERE
+
+port: 9999
+concurrent_workers: 20
+check_for_changes_every_secs: 10
+retain_folder_name_extension: false
+retain_rd_torrent_name: true
+
+directories:
+  __all__:
+    group_order: 10
+    group: all
+    filters:
+      - regex: /.*/

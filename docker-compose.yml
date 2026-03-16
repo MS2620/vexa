@@ -1,0 +1,80 @@
+# Full stack: zurg (RD mount) + rclone (FUSE) + debrid-dashboard app
+#
+# Prerequisites on the HOST:
+#   sudo mkdir -p /mnt/zurg /mnt/plex_symlinks
+#   sudo chmod 755 /mnt/zurg /mnt/plex_symlinks
+#
+# 1. Copy config/zurg.yml.example → config/zurg.yml and fill in your RD token
+# 2. Create a .env file with: SESSION_SECRET=<at_least_32_chars>
+# 3. Run: docker compose up -d
+
+services:
+  zurg:
+    image: ghcr.io/debridmediamanager/zurg-testing:latest
+    container_name: zurg
+    restart: unless-stopped
+    volumes:
+      - ./config/zurg.yml:/app/config.yml:ro
+      - zurg-data:/app/data
+    # Port only needed if you want external WebDAV access; not required for rclone
+    # ports:
+    #   - "9999:9999"
+
+  rclone:
+    image: rclone/rclone:latest
+    container_name: rclone
+    restart: unless-stopped
+    # FUSE requires elevated capabilities
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    volumes:
+      - ./config/rclone.conf:/config/rclone/rclone.conf:ro
+      # Bind-mount with 'shared' so the app container sees what rclone mounts here
+      - type: bind
+        source: /mnt/zurg
+        target: /mnt/zurg
+        bind:
+          propagation: shared
+    command: >
+      mount zurg: /mnt/zurg
+      --allow-non-empty
+      --allow-other
+      --dir-cache-time 10s
+      --vfs-cache-mode off
+      --no-checksum
+      --uid 1001
+      --gid 1001
+    depends_on:
+      - zurg
+
+  app:
+    build: .
+    container_name: debrid-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET env var is required}
+      - DB_PATH=/app/data/database.sqlite
+      - DEBRID_MOUNT=/mnt/zurg/__all__
+      - PLEX_SYMLINK_ROOT=/mnt/plex_symlinks
+    volumes:
+      - debrid-data:/app/data
+      # Inherit the rclone FUSE mount (slave: sees rclone's mounts, can't pollute host)
+      - type: bind
+        source: /mnt/zurg
+        target: /mnt/zurg
+        bind:
+          propagation: slave
+      # Symlink target — must be accessible to Plex too
+      - /mnt/plex_symlinks:/mnt/plex_symlinks
+    depends_on:
+      - rclone
+
+volumes:
+  debrid-data:
+  zurg-data:
