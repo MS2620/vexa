@@ -54,6 +54,13 @@ export default function Dashboard() {
     });
   };
 
+  const sectionClass =
+    "rounded-2xl border border-gray-800/70 bg-[#131722]/55 p-3 sm:p-4 md:p-5";
+  const carouselClass =
+    "flex gap-3 md:gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-smooth touch-pan-x overscroll-x-contain";
+  const navButtonClass =
+    "hidden md:flex absolute top-1/2 -translate-y-1/2 z-10 w-10 h-10 items-center justify-center rounded-full border border-gray-700/70 bg-[#0f111a]/85 text-white hover:bg-[#191d2a]";
+
   // Standard Poster Card
   const PosterCard = ({
     media,
@@ -76,7 +83,7 @@ export default function Dashboard() {
             `/media/${media.media_type || (media.first_air_date ? "tv" : "movie")}/${media.id}`,
           )
         }
-        className="w-[150px] md:w-[180px] shrink-0 rounded-xl overflow-hidden cursor-pointer relative group transition-transform hover:scale-105 snap-start"
+        className="w-[140px] sm:w-[155px] md:w-[180px] shrink-0 rounded-xl overflow-hidden cursor-pointer relative group transition-transform hover:scale-[1.02] snap-start"
       >
         <div className="absolute top-2 left-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-lg z-10 uppercase tracking-wider">
           {isTv ? "Series" : "Movie"}
@@ -118,7 +125,7 @@ export default function Dashboard() {
 
   // Wide Request Card (Matches the second row in your image)
   const RequestCard = ({ title, year, user, status, seasons, img }: any) => (
-    <div className="min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer snap-start">
+    <div className="min-w-[280px] sm:min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer snap-start">
       <div className="flex-1 flex flex-col">
         <span className="text-xs text-gray-400 mb-0.5">{year}</span>
         <h3 className="font-bold text-white leading-tight mb-2">{title}</h3>
@@ -164,12 +171,12 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="space-y-10 mt-6 animate-in fade-in">
+      <div className="space-y-6 md:space-y-8 mt-4 md:mt-6 animate-in fade-in">
         {/** Shared carousel controls style applied per row */}
 
         {/* ROW 1: Recently Added */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
+        <section className={sectionClass}>
+          <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-100">Recently Added</h2>
             <Link
               href="/recently-added"
@@ -181,22 +188,19 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-recent", "left")}
-              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} left-1`}
               aria-label="Scroll Recently Added left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-recent", "right")}
-              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} right-1`}
               aria-label="Scroll Recently Added right"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
-            <div
-              id="carousel-recent"
-              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
-            >
+            <div id="carousel-recent" className={carouselClass}>
               {recentlyAdded.length > 0 ? (
                 // Everything here is definitely on Plex
                 recentlyAdded.map((media) => (
@@ -216,8 +220,8 @@ export default function Dashboard() {
         </section>
 
         {/* ROW 2: Recent Requests */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
+        <section className={sectionClass}>
+          <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
               Recent Requests
             </h2>
@@ -231,22 +235,19 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-requests", "left")}
-              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} left-1`}
               aria-label="Scroll Recent Requests left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-requests", "right")}
-              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} right-1`}
               aria-label="Scroll Recent Requests right"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
-            <div
-              id="carousel-requests"
-              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
-            >
+            <div id="carousel-requests" className={carouselClass}>
               {recentRequests.length > 0 ? (
                 recentRequests.map((req) => (
                   <RequestCard
@@ -273,8 +274,8 @@ export default function Dashboard() {
         </section>
 
         {/* ROW 3: Your Watchlist */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
+        <section className={sectionClass}>
+          <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
               Your Watchlist <ChevronRight className="w-4 h-4 text-gray-500" />
             </h2>
@@ -282,22 +283,19 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-watchlist", "left")}
-              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} left-1`}
               aria-label="Scroll Watchlist left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-watchlist", "right")}
-              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} right-1`}
               aria-label="Scroll Watchlist right"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
-            <div
-              id="carousel-watchlist"
-              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
-            >
+            <div id="carousel-watchlist" className={carouselClass}>
               {watchlist.length > 0 ? (
                 watchlist.map((media) => (
                   <PosterCard
@@ -316,8 +314,8 @@ export default function Dashboard() {
         </section>
 
         {/* ROW 4: Trending */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
+        <section className={sectionClass}>
+          <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
               Upcoming Episodes{" "}
               <ChevronRight className="w-4 h-4 text-gray-500" />
@@ -326,28 +324,25 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-upcoming", "left")}
-              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} left-1`}
               aria-label="Scroll Upcoming Episodes left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-upcoming", "right")}
-              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} right-1`}
               aria-label="Scroll Upcoming Episodes right"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
-            <div
-              id="carousel-upcoming"
-              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
-            >
+            <div id="carousel-upcoming" className={carouselClass}>
               {upcomingEpisodes.length > 0 ? (
                 upcomingEpisodes.map((episode) => (
                   <div
                     key={`${episode.tmdb_id}-${episode.season_number}-${episode.episode_number}`}
                     onClick={() => router.push(`/media/tv/${episode.tmdb_id}`)}
-                    className="min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer snap-start"
+                    className="min-w-[280px] sm:min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer snap-start"
                   >
                     <div className="flex-1 flex flex-col">
                       <span className="text-xs text-indigo-300 mb-0.5">
@@ -387,8 +382,8 @@ export default function Dashboard() {
         </section>
 
         {/* ROW 5: Trending */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
+        <section className={sectionClass}>
+          <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
               Trending <ChevronRight className="w-4 h-4 text-gray-500" />
             </h2>
@@ -396,22 +391,19 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-trending", "left")}
-              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} left-1`}
               aria-label="Scroll Trending left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-trending", "right")}
-              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              className={`${navButtonClass} right-1`}
               aria-label="Scroll Trending right"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
-            <div
-              id="carousel-trending"
-              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
-            >
+            <div id="carousel-trending" className={carouselClass}>
               {trending.map((media) => {
                 // Check if this TMDB item exists in our known Plex array
                 const onPlex = recentlyAdded.some(
