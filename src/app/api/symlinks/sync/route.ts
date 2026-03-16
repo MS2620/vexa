@@ -10,6 +10,8 @@ type ParsedName = {
   season: number | null;
 };
 
+type TmdbMatch = { id: number; title: string; mediaType: "movie" | "tv" };
+
 // Extract title, year, type, and season from a raw torrent filename.
 // Handles the most common naming conventions — not perfect, but covers >90% of real-world cases.
 function parseTorrentName(filename: string): ParsedName {
@@ -85,6 +87,21 @@ function parseTorrentName(filename: string): ParsedName {
       };
   }
 
+  // TV — explicit "Season S01" form: "NCIS 2003 Season S01"
+  const seasonWithSPrefix = s.match(
+    /^(.+?)\s+[Ss]eason\s+[Ss](\d{1,2})(?:\s|$)/i,
+  );
+  if (seasonWithSPrefix) {
+    const season = parseInt(seasonWithSPrefix[2]);
+    if (!isNaN(season))
+      return {
+        title: cleanTvTitle(cleanTitle(seasonWithSPrefix[1])),
+        year: null,
+        mediaType: "tv",
+        season,
+      };
+  }
+
   // Movie — year in square brackets: "Despicable Me 4 [2024]"
   const withYearSquare = s.match(/^(.+?)\s+\[((?:19|20)\d{2})\]/);
   if (withYearSquare)
@@ -123,9 +140,12 @@ function parseTorrentName(filename: string): ParsedName {
 function cleanTitle(s: string): string {
   return s
     .replace(
-      /\b(4k|uhd|hdr|dv|bluray|blu.ray|remux|web.dl|webrip|hdtv|dvdrip|xvid|x264|x265|hevc|h264|h265|aac|dts|dolby|atmos|truehd|multi|complete|proper|repack|extended|theatrical|directors.cut)\b.*/gi,
+      /\b(\d{3,4}p|4k|uhd|hdr10\+?|hdr|dv|bluray|blu.ray|remux|web.dl|webrip|hdtv|dvdrip|xvid|x264|x265|hevc|h264|h265|aac|dts(?:-hd)?|dolby|atmos|truehd|ddp?\d(?:\.\d)?|multi|complete|proper|repack|extended|theatrical|directors.cut|lostfilm|rartv|eztv|tgx)\b.*/gi,
       "",
     )
+    .replace(/\b(?:rus|ita|eng|french|latino|dual|dub)\b/gi, " ")
+    .replace(/\s+tv$/i, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
 }
 
@@ -146,7 +166,7 @@ async function searchTMDB(
   year: string | null,
   mediaType: "movie" | "tv",
   tmdbKey: string,
-): Promise<{ id: number; title: string } | null> {
+): Promise<TmdbMatch | null> {
   const buildQueryVariants = (rawTitle: string): string[] => {
     const queries = new Set<string>();
     const base = rawTitle.trim();
@@ -172,32 +192,53 @@ async function searchTMDB(
     return [...queries].filter(Boolean);
   };
 
-  const doSearch = async (query: string, includeYear: boolean) => {
+  const doSearch = async (
+    query: string,
+    includeYear: boolean,
+    type: "movie" | "tv",
+  ) => {
     const params = new URLSearchParams({ query, api_key: tmdbKey });
     if (includeYear && year) {
-      params.set(mediaType === "movie" ? "year" : "first_air_date_year", year);
+      params.set(type === "movie" ? "year" : "first_air_date_year", year);
     }
     const res = await fetch(
-      `https://api.themoviedb.org/3/search/${mediaType}?${params}`,
+      `https://api.themoviedb.org/3/search/${type}?${params}`,
     );
     const data = await res.json();
     return data.results?.[0] ?? null;
   };
 
+  const tryType = async (type: "movie" | "tv"): Promise<TmdbMatch | null> => {
+    for (const query of queries) {
+      const result = await doSearch(query, true, type);
+      if (result)
+        return {
+          id: result.id,
+          title: result.title ?? result.name,
+          mediaType: type,
+        };
+    }
+
+    for (const query of queries) {
+      const result = await doSearch(query, false, type);
+      if (result)
+        return {
+          id: result.id,
+          title: result.title ?? result.name,
+          mediaType: type,
+        };
+    }
+
+    return null;
+  };
+
   const queries = buildQueryVariants(title);
+  const preferred = await tryType(mediaType);
+  if (preferred) return preferred;
 
-  // Try with year first, then without year, across query variants
-  for (const query of queries) {
-    const result = await doSearch(query, true);
-    if (result) return { id: result.id, title: result.title ?? result.name };
-  }
-
-  for (const query of queries) {
-    const result = await doSearch(query, false);
-    if (result) return { id: result.id, title: result.title ?? result.name };
-  }
-
-  return null;
+  // Last resort: retry on the opposite media type in case parsing guessed wrong.
+  const fallbackType = mediaType === "movie" ? "tv" : "movie";
+  return tryType(fallbackType);
 }
 
 export async function POST() {
@@ -295,7 +336,7 @@ export async function POST() {
                 infoData,
                 title: match.title,
                 tmdbId: String(match.id),
-                mediaType: parsed.mediaType,
+                mediaType: match.mediaType,
                 season: parsed.season,
                 tmdbKey: settings.tmdb_key,
               });
