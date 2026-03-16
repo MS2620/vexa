@@ -1,6 +1,21 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Save, Loader2 } from "lucide-react";
+import {
+  Save,
+  Loader2,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  SkipForward,
+} from "lucide-react";
+
+type SyncItem = {
+  status: "synced" | "skipped" | "failed";
+  filename: string;
+  title?: string;
+  reason?: string;
+};
+type SyncSummary = { synced: number; skipped: number; failed: number };
 
 export default function Settings() {
   const [formData, setFormData] = useState({
@@ -21,6 +36,52 @@ export default function Settings() {
   const [saveStatus, setSaveStatus] = useState("");
   const [serviceStatus, setServiceStatus] = useState<any>(null);
   const [statusLoading, setStatusLoading] = useState(true);
+
+  const [syncState, setSyncState] = useState<"idle" | "running" | "done">(
+    "idle",
+  );
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
+  const [syncItems, setSyncItems] = useState<SyncItem[]>([]);
+  const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
+
+  const handleSync = async () => {
+    setSyncState("running");
+    setSyncItems([]);
+    setSyncProgress({ current: 0, total: 0 });
+    setSyncSummary(null);
+
+    const res = await fetch("/api/symlinks/sync", { method: "POST" });
+    if (!res.ok || !res.body) {
+      setSyncState("done");
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const line of decoder.decode(value).split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const event = JSON.parse(line.slice(6));
+          if (event.type === "total")
+            setSyncProgress({ current: 0, total: event.count });
+          else if (event.type === "progress")
+            setSyncProgress({ current: event.current, total: event.total });
+          else if (event.type === "item")
+            setSyncItems((prev) => [...prev.slice(-49), event]);
+          else if (event.type === "done") {
+            setSyncSummary(event);
+            setSyncState("done");
+          } else if (event.type === "error") setSyncState("done");
+        } catch {
+          /* malformed line */
+        }
+      }
+    }
+  };
 
   // Load saved settings
   useEffect(() => {
@@ -415,6 +476,96 @@ export default function Settings() {
             <Save className="w-5 h-5" /> Save Configuration
           </button>
         </div>
+      </div>
+
+      {/* ── LIBRARY SYNC ── */}
+      <div className="bg-[#161824] border border-gray-800/50 rounded-xl p-8 space-y-5">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-1">
+            Library Sync
+          </h2>
+          <p className="text-sm text-gray-500">
+            Scan your existing Real-Debrid library and create Plex symlinks for
+            all downloaded torrents. Safe to re-run — existing symlinks are
+            skipped.
+          </p>
+        </div>
+
+        {/* Progress bar */}
+        {syncState === "running" && syncProgress.total > 0 && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Processing torrents…</span>
+              <span>
+                {syncProgress.current} / {syncProgress.total}
+              </span>
+            </div>
+            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-indigo-500 transition-all duration-300"
+                style={{
+                  width: `${(syncProgress.current / syncProgress.total) * 100}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Summary */}
+        {syncSummary && (
+          <div className="flex gap-4 text-sm">
+            <span className="text-green-400">
+              ✓ {syncSummary.synced} synced
+            </span>
+            <span className="text-yellow-400">
+              ⊘ {syncSummary.skipped} skipped
+            </span>
+            <span className="text-red-400">✗ {syncSummary.failed} failed</span>
+          </div>
+        )}
+
+        {/* Results list — last 50 items */}
+        {syncItems.length > 0 && (
+          <div className="max-h-56 overflow-y-auto space-y-1 rounded-lg bg-[#0f111a] border border-gray-800 p-3">
+            {syncItems.map((item, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs">
+                {item.status === "synced" && (
+                  <CheckCircle className="w-3.5 h-3.5 text-green-400 mt-0.5 shrink-0" />
+                )}
+                {item.status === "skipped" && (
+                  <SkipForward className="w-3.5 h-3.5 text-yellow-400 mt-0.5 shrink-0" />
+                )}
+                {item.status === "failed" && (
+                  <XCircle className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <span className="text-gray-300 truncate block">
+                    {item.title ?? item.filename}
+                  </span>
+                  {item.reason && (
+                    <span className="text-gray-600">{item.reason}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={handleSync}
+          disabled={syncState === "running"}
+          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:text-indigo-400 rounded-lg text-sm font-medium transition-colors"
+        >
+          {syncState === "running" ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Syncing…
+            </>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4" /> Sync RD Library
+            </>
+          )}
+        </button>
       </div>
     </div>
   );
