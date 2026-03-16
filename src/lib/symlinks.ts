@@ -82,7 +82,7 @@ export async function createSymlinks({
         : "Season 01";
       targetDir = path.join(
         PLEX_SYMLINK_ROOT,
-        "TV Shows",
+        "TV_Shows",
         folderName,
         seasonStr,
       );
