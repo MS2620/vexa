@@ -271,6 +271,7 @@ export async function POST() {
         let synced = 0,
           skipped = 0,
           failed = 0;
+        const syncedMediaTypes = new Set<"movie" | "tv">();
 
         for (let i = 0; i < downloaded.length; i++) {
           const torrent = downloaded[i];
@@ -330,6 +331,7 @@ export async function POST() {
                 tmdbKey: settings.tmdb_key,
               });
               synced++;
+              syncedMediaTypes.add(match.mediaType);
               send(ctrl, {
                 type: "item",
                 status: "synced",
@@ -357,10 +359,13 @@ export async function POST() {
           await new Promise((r) => setTimeout(r, 300));
         }
 
-        const sectionIds = [
-          settings.plex_lib_id,
-          settings.plex_tv_lib_id,
-        ].filter(Boolean);
+        const sectionIds: string[] = [];
+        if (syncedMediaTypes.has("movie") && settings.plex_lib_id) {
+          sectionIds.push(settings.plex_lib_id);
+        }
+        if (syncedMediaTypes.has("tv") && settings.plex_tv_lib_id) {
+          sectionIds.push(settings.plex_tv_lib_id);
+        }
 
         if (settings.plex_url && settings.plex_token && sectionIds.length > 0) {
           await Promise.all(

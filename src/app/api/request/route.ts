@@ -7,6 +7,7 @@ export async function POST(req: Request) {
   try {
     const { infoHash, tmdbId, title, posterPath, mediaType, season, episode } =
       await req.json();
+    const requestedMediaType = mediaType === "tv" ? "tv" : "movie";
 
     // Guard: make sure we actually have an infoHash
     if (!infoHash) {
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
           posterPath || null,
           "Pending Approval",
           requestedBy,
-          mediaType || "movie",
+          requestedMediaType,
           season || null,
           episode || null,
           infoHash,
@@ -176,7 +177,7 @@ export async function POST(req: Request) {
       infoData: selectedInfoData,
       title: title || "Unknown",
       tmdbId: tmdbId || null,
-      mediaType: mediaType || "movie",
+      mediaType: requestedMediaType,
       season: season || null,
       tmdbKey: settings.tmdb_key || "",
     }).catch((e) => console.error("[symlinks] Error:", e));
@@ -193,7 +194,7 @@ export async function POST(req: Request) {
         posterPath || null,
         "Requested",
         requestedBy,
-        mediaType || "movie",
+        requestedMediaType,
         season || null,
         episode || null,
         infoHash,
@@ -208,24 +209,17 @@ export async function POST(req: Request) {
 
     // 7. Trigger Plex scan after a delay
     setTimeout(() => {
-      const sectionIds = [settings.plex_lib_id, settings.plex_tv_lib_id].filter(
-        Boolean,
-      );
+      const sectionId =
+        requestedMediaType === "tv"
+          ? settings.plex_tv_lib_id
+          : settings.plex_lib_id;
 
-      if (
-        !settings.plex_url ||
-        !settings.plex_token ||
-        sectionIds.length === 0
-      ) {
+      if (!settings.plex_url || !settings.plex_token || !sectionId) {
         return;
       }
 
-      Promise.all(
-        sectionIds.map((sectionId: string) =>
-          fetch(
-            `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
-          ),
-        ),
+      fetch(
+        `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
       ).catch((e) => console.error("Plex refresh failed:", e));
     }, 5000);
 
