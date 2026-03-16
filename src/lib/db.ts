@@ -71,6 +71,20 @@ export async function initDb() {
       added_by TEXT,
       added_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS auto_episode_retry (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tmdb_id TEXT NOT NULL,
+      show_name TEXT NOT NULL,
+      poster_path TEXT,
+      season INTEGER NOT NULL,
+      episode INTEGER NOT NULL,
+      episode_name TEXT NOT NULL,
+      air_date TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      attempts INTEGER DEFAULT 0,
+      last_checked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(tmdb_id, season, episode)
+    )`,
   ];
 
   for (const migration of migrations) {
