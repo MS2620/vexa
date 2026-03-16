@@ -18,7 +18,7 @@ export async function POST(req: Request) {
 
     const db = await openDb();
     const settings = await db.get(
-      "SELECT rd_token, plex_url, plex_token, plex_lib_id, tmdb_key FROM settings WHERE id = 1",
+      "SELECT rd_token, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, tmdb_key FROM settings WHERE id = 1",
     );
 
     if (!settings?.rd_token) {
@@ -206,10 +206,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, pending: true });
     }
 
-    // 5. Trigger Plex scan after a delay
+    // 7. Trigger Plex scan after a delay
     setTimeout(() => {
-      fetch(
-        `${settings.plex_url}/library/sections/${settings.plex_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
+      const sectionIds = [settings.plex_lib_id, settings.plex_tv_lib_id].filter(
+        Boolean,
+      );
+
+      if (
+        !settings.plex_url ||
+        !settings.plex_token ||
+        sectionIds.length === 0
+      ) {
+        return;
+      }
+
+      Promise.all(
+        sectionIds.map((sectionId: string) =>
+          fetch(
+            `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
+          ),
+        ),
       ).catch((e) => console.error("Plex refresh failed:", e));
     }, 5000);
 

@@ -239,7 +239,7 @@ export async function POST() {
 
   const db = await openDb();
   const settings = await db.get(
-    "SELECT rd_token, tmdb_key FROM settings WHERE id = 1",
+    "SELECT rd_token, tmdb_key, plex_url, plex_token, plex_lib_id, plex_tv_lib_id FROM settings WHERE id = 1",
   );
 
   if (!settings?.rd_token)
@@ -357,7 +357,28 @@ export async function POST() {
           await new Promise((r) => setTimeout(r, 300));
         }
 
-        send(ctrl, { type: "done", synced, skipped, failed });
+        const sectionIds = [
+          settings.plex_lib_id,
+          settings.plex_tv_lib_id,
+        ].filter(Boolean);
+
+        if (settings.plex_url && settings.plex_token && sectionIds.length > 0) {
+          await Promise.all(
+            sectionIds.map((sectionId: string) =>
+              fetch(
+                `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
+              ),
+            ),
+          );
+        }
+
+        send(ctrl, {
+          type: "done",
+          synced,
+          skipped,
+          failed,
+          plexRefreshed: sectionIds.length > 0,
+        });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Unknown error";
         send(ctrl, { type: "error", message: msg });
