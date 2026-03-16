@@ -57,9 +57,9 @@ export default function Dashboard() {
   const sectionClass =
     "rounded-2xl border border-gray-800/70 bg-[#131722]/55 p-3 sm:p-4 md:p-5";
   const carouselClass =
-    "flex gap-3 md:gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-smooth touch-pan-x overscroll-x-contain";
+    "flex gap-3 md:gap-4 overflow-x-auto pb-2 px-9 md:px-11 scrollbar-hide snap-x snap-mandatory scroll-smooth touch-pan-x overscroll-x-contain";
   const navButtonClass =
-    "hidden md:flex absolute top-1/2 -translate-y-1/2 z-10 w-10 h-10 items-center justify-center rounded-full border border-gray-700/70 bg-[#0f111a]/85 text-white hover:bg-[#191d2a]";
+    "flex absolute top-1/2 -translate-y-1/2 z-20 w-8 h-8 md:w-10 md:h-10 items-center justify-center rounded-full border border-gray-600/80 bg-[#0b1020]/90 text-white hover:bg-[#1b2440] shadow-lg shadow-black/40";
 
   // Standard Poster Card
   const PosterCard = ({
@@ -188,14 +188,14 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-recent", "left")}
-              className={`${navButtonClass} left-1`}
+              className={`${navButtonClass} left-0.5 md:left-1`}
               aria-label="Scroll Recently Added left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-recent", "right")}
-              className={`${navButtonClass} right-1`}
+              className={`${navButtonClass} right-0.5 md:right-1`}
               aria-label="Scroll Recently Added right"
             >
               <ChevronRight className="w-4 h-4" />
@@ -235,14 +235,14 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-requests", "left")}
-              className={`${navButtonClass} left-1`}
+              className={`${navButtonClass} left-0.5 md:left-1`}
               aria-label="Scroll Recent Requests left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-requests", "right")}
-              className={`${navButtonClass} right-1`}
+              className={`${navButtonClass} right-0.5 md:right-1`}
               aria-label="Scroll Recent Requests right"
             >
               <ChevronRight className="w-4 h-4" />
@@ -283,14 +283,14 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-watchlist", "left")}
-              className={`${navButtonClass} left-1`}
+              className={`${navButtonClass} left-0.5 md:left-1`}
               aria-label="Scroll Watchlist left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-watchlist", "right")}
-              className={`${navButtonClass} right-1`}
+              className={`${navButtonClass} right-0.5 md:right-1`}
               aria-label="Scroll Watchlist right"
             >
               <ChevronRight className="w-4 h-4" />
@@ -324,14 +324,14 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-upcoming", "left")}
-              className={`${navButtonClass} left-1`}
+              className={`${navButtonClass} left-0.5 md:left-1`}
               aria-label="Scroll Upcoming Episodes left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-upcoming", "right")}
-              className={`${navButtonClass} right-1`}
+              className={`${navButtonClass} right-0.5 md:right-1`}
               aria-label="Scroll Upcoming Episodes right"
             >
               <ChevronRight className="w-4 h-4" />
@@ -391,14 +391,14 @@ export default function Dashboard() {
           <div className="relative">
             <button
               onClick={() => scrollCarousel("carousel-trending", "left")}
-              className={`${navButtonClass} left-1`}
+              className={`${navButtonClass} left-0.5 md:left-1`}
               aria-label="Scroll Trending left"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => scrollCarousel("carousel-trending", "right")}
-              className={`${navButtonClass} right-1`}
+              className={`${navButtonClass} right-0.5 md:right-1`}
               aria-label="Scroll Trending right"
             >
               <ChevronRight className="w-4 h-4" />
