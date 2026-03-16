@@ -132,10 +132,10 @@ function cleanTitle(s: string): string {
 function cleanTvTitle(s: string): string {
   return s
     .replace(/\s+\((?:19|20)\d{2}\)/g, "") // strip (year) anywhere in title
-    .replace(/\s+(?:19|20)\d{2}$/, "") // strip trailing bare year
-    .replace(/\b[Ss]eason\b\s*$/g, "") // strip trailing "Season" word
-    .replace(/[^\x00-\x7F]+/g, "") // strip non-ASCII (e.g. Chinese chars)
-    .replace(/\s*[-–—]\s*$/, "") // strip trailing " - "
+    .replace(/\b[Ss]eason\b\s*$/g, "")      // strip trailing "Season" BEFORE year strip
+    .replace(/\s+(?:19|20)\d{2}$/, "")      // then strip trailing bare year
+    .replace(/[^\x00-\x7F]+/g, "")          // strip non-ASCII (e.g. Chinese chars)
+    .replace(/\s*[-–—]\s*$/, "")            // strip trailing " - "
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -179,6 +179,11 @@ export async function POST() {
       status: 400,
     });
 
+  if (!settings?.tmdb_key)
+    return new Response(JSON.stringify({ error: "TMDB key not configured" }), {
+      status: 400,
+    });
+
   const encoder = new TextEncoder();
   const send = (ctrl: ReadableStreamDefaultController, data: object) =>
     ctrl.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
@@ -214,7 +219,7 @@ export async function POST() {
               /\b(collection|saga|pack|anthology|trilogy|quadrilogy|franchise|universe)\b/i.test(
                 infoData.filename,
               ) ||
-              /\b\d+\s*[,&]\s*\d+\b/.test(infoData.filename) // e.g. "Shrek 1,2,3,4"
+              /\b\d+(\s*[,&]\s*\d+){2,}\b/.test(infoData.filename) // e.g. "Shrek 1,2,3,4" (3+ numbers)
             ) {
               skipped++;
               send(ctrl, {
@@ -280,8 +285,8 @@ export async function POST() {
             current: i + 1,
             total: downloaded.length,
           });
-          // Pace requests to avoid hammering RD/TMDB APIs
-          await new Promise((r) => setTimeout(r, 150));
+          // Pace requests to avoid hammering RD/TMDB APIs (TMDB allows ~40 req/10s)
+          await new Promise((r) => setTimeout(r, 300));
         }
 
         send(ctrl, { type: "done", synced, skipped, failed });

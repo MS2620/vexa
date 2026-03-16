@@ -43,6 +43,7 @@ export default function Settings() {
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
   const [syncItems, setSyncItems] = useState<SyncItem[]>([]);
   const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [syncTab, setSyncTab] = useState<"synced" | "skipped" | "failed">(
     "synced",
   );
@@ -52,10 +53,13 @@ export default function Settings() {
     setSyncItems([]);
     setSyncProgress({ current: 0, total: 0 });
     setSyncSummary(null);
+    setSyncError(null);
     setSyncTab("synced");
 
     const res = await fetch("/api/symlinks/sync", { method: "POST" });
     if (!res.ok || !res.body) {
+      const body = await res.json().catch(() => ({}));
+      setSyncError(body.error ?? "Sync failed");
       setSyncState("done");
       return;
     }
@@ -494,6 +498,14 @@ export default function Settings() {
             skipped.
           </p>
         </div>
+
+        {/* Error banner */}
+        {syncError && (
+          <div className="flex items-center gap-2 text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-4 py-2.5">
+            <XCircle className="w-4 h-4 shrink-0" />
+            {syncError}
+          </div>
+        )}
 
         {/* Progress bar */}
         {syncState === "running" && syncProgress.total > 0 && (
