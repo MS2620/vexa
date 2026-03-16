@@ -150,9 +150,30 @@ export async function POST(req: Request) {
       },
     );
 
-    // 4. Create Plex symlinks (fire-and-forget — does not block the response)
+    // 4. Re-fetch torrent info after file selection so `selected` flags are up to date
+    // RD can take a moment to apply selection; retry briefly before symlinking.
+    let selectedInfoData = infoData;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+
+      const selectedInfoRes = await fetch(
+        `https://api.real-debrid.com/rest/1.0/torrents/info/${rdData.id}`,
+        { headers: { Authorization: `Bearer ${settings.rd_token}` } },
+      );
+      const latest = await selectedInfoRes.json();
+
+      if (latest?.files?.some((f: any) => f.selected === 1)) {
+        selectedInfoData = latest;
+        break;
+      }
+
+      // Keep last payload even if selection wasn't reflected yet.
+      selectedInfoData = latest;
+    }
+
+    // 5. Create Plex symlinks (fire-and-forget — does not block the response)
     createSymlinks({
-      infoData,
+      infoData: selectedInfoData,
       title: title || "Unknown",
       tmdbId: tmdbId || null,
       mediaType: mediaType || "movie",
@@ -160,7 +181,7 @@ export async function POST(req: Request) {
       tmdbKey: settings.tmdb_key || "",
     }).catch((e) => console.error("[symlinks] Error:", e));
 
-    // 5. Save request to SQLite
+    // 6. Save request to SQLite
     await db.run(
       `
       INSERT INTO requests (tmdb_id, title, poster_path, status, requested_by, media_type, season, episode, info_hash, approved)
