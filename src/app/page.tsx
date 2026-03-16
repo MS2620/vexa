@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Loader2, Play, ChevronRight } from "lucide-react";
+import { X, Loader2, Play, ChevronRight, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -43,6 +43,17 @@ export default function Dashboard() {
     });
   };
 
+  const scrollCarousel = (id: string, direction: "left" | "right") => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    const amount = Math.max(320, Math.floor(el.clientWidth * 0.8));
+    el.scrollBy({
+      left: direction === "right" ? amount : -amount,
+      behavior: "smooth",
+    });
+  };
+
   // Standard Poster Card
   const PosterCard = ({
     media,
@@ -65,7 +76,7 @@ export default function Dashboard() {
             `/media/${media.media_type || (media.first_air_date ? "tv" : "movie")}/${media.id}`,
           )
         }
-        className="w-[150px] md:w-[180px] shrink-0 rounded-xl overflow-hidden cursor-pointer relative group transition-transform hover:scale-105"
+        className="w-[150px] md:w-[180px] shrink-0 rounded-xl overflow-hidden cursor-pointer relative group transition-transform hover:scale-105 snap-start"
       >
         <div className="absolute top-2 left-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-lg z-10 uppercase tracking-wider">
           {isTv ? "Series" : "Movie"}
@@ -107,7 +118,7 @@ export default function Dashboard() {
 
   // Wide Request Card (Matches the second row in your image)
   const RequestCard = ({ title, year, user, status, seasons, img }: any) => (
-    <div className="min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer">
+    <div className="min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer snap-start">
       <div className="flex-1 flex flex-col">
         <span className="text-xs text-gray-400 mb-0.5">{year}</span>
         <h3 className="font-bold text-white leading-tight mb-2">{title}</h3>
@@ -154,6 +165,8 @@ export default function Dashboard() {
   return (
     <>
       <div className="space-y-10 mt-6 animate-in fade-in">
+        {/** Shared carousel controls style applied per row */}
+
         {/* ROW 1: Recently Added */}
         <section>
           <div className="flex items-center justify-between mb-4">
@@ -165,7 +178,25 @@ export default function Dashboard() {
               <ChevronRight className="w-5 h-5" />
             </Link>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+          <div className="relative">
+            <button
+              onClick={() => scrollCarousel("carousel-recent", "left")}
+              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Recently Added left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => scrollCarousel("carousel-recent", "right")}
+              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Recently Added right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <div
+              id="carousel-recent"
+              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
+            >
             {recentlyAdded.length > 0 ? (
               // Everything here is definitely on Plex
               recentlyAdded.map((media) => (
@@ -180,6 +211,7 @@ export default function Dashboard() {
                 No recent media found in Plex.
               </div>
             )}
+            </div>
           </div>
         </section>
 
@@ -196,7 +228,25 @@ export default function Dashboard() {
               View All →
             </a>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+          <div className="relative">
+            <button
+              onClick={() => scrollCarousel("carousel-requests", "left")}
+              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Recent Requests left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => scrollCarousel("carousel-requests", "right")}
+              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Recent Requests right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <div
+              id="carousel-requests"
+              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
+            >
             {recentRequests.length > 0 ? (
               recentRequests.map((req) => (
                 <RequestCard
@@ -218,6 +268,7 @@ export default function Dashboard() {
                 No requests yet.
               </div>
             )}
+            </div>
           </div>
         </section>
 
@@ -228,7 +279,25 @@ export default function Dashboard() {
               Your Watchlist <ChevronRight className="w-4 h-4 text-gray-500" />
             </h2>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+          <div className="relative">
+            <button
+              onClick={() => scrollCarousel("carousel-watchlist", "left")}
+              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Watchlist left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => scrollCarousel("carousel-watchlist", "right")}
+              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Watchlist right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <div
+              id="carousel-watchlist"
+              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
+            >
             {watchlist.length > 0 ? (
               watchlist.map((media) => (
                 <PosterCard
@@ -242,6 +311,7 @@ export default function Dashboard() {
                 No ongoing series found in your Plex TV library.
               </div>
             )}
+            </div>
           </div>
         </section>
 
@@ -253,13 +323,31 @@ export default function Dashboard() {
               <ChevronRight className="w-4 h-4 text-gray-500" />
             </h2>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+          <div className="relative">
+            <button
+              onClick={() => scrollCarousel("carousel-upcoming", "left")}
+              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Upcoming Episodes left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => scrollCarousel("carousel-upcoming", "right")}
+              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Upcoming Episodes right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <div
+              id="carousel-upcoming"
+              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
+            >
             {upcomingEpisodes.length > 0 ? (
               upcomingEpisodes.map((episode) => (
                 <div
                   key={`${episode.tmdb_id}-${episode.season_number}-${episode.episode_number}`}
                   onClick={() => router.push(`/media/tv/${episode.tmdb_id}`)}
-                  className="min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer"
+                  className="min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer snap-start"
                 >
                   <div className="flex-1 flex flex-col">
                     <span className="text-xs text-indigo-300 mb-0.5">
@@ -294,6 +382,7 @@ export default function Dashboard() {
                 No upcoming episodes in the next 60 days from your watchlist.
               </div>
             )}
+            </div>
           </div>
         </section>
 
@@ -304,7 +393,25 @@ export default function Dashboard() {
               Trending <ChevronRight className="w-4 h-4 text-gray-500" />
             </h2>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+          <div className="relative">
+            <button
+              onClick={() => scrollCarousel("carousel-trending", "left")}
+              className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Trending left"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => scrollCarousel("carousel-trending", "right")}
+              className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 w-9 h-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="Scroll Trending right"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <div
+              id="carousel-trending"
+              className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
+            >
             {trending.map((media) => {
               // Check if this TMDB item exists in our known Plex array
               const onPlex = recentlyAdded.some(
@@ -320,6 +427,7 @@ export default function Dashboard() {
                 />
               );
             })}
+            </div>
           </div>
         </section>
       </div>
