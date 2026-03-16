@@ -85,6 +85,13 @@ export async function initDb() {
       last_checked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(tmdb_id, season, episode)
     )`,
+    `CREATE TABLE IF NOT EXISTS logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      level TEXT DEFAULT 'info',
+      message TEXT NOT NULL,
+      context TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`
   ];
 
   for (const migration of migrations) {

@@ -27,7 +27,9 @@ export async function createSymlinks({
   mediaType,
   season,
   tmdbKey,
-}: SymlinkParams): Promise<void> {
+}: SymlinkParams): Promise<string[]> {
+  const createdPaths: string[] = [];
+
   // Skip silently if the zurg mount isn't available (dev or unconfigured)
   try {
     await fs.access(DEBRID_MOUNT);
@@ -35,7 +37,7 @@ export async function createSymlinks({
     console.warn(
       `[symlinks] ${DEBRID_MOUNT} not accessible — skipping symlink creation`,
     );
-    return;
+    return createdPaths;
   }
 
   // Fetch release year from TMDB to build the Plex folder name
@@ -65,7 +67,7 @@ export async function createSymlinks({
 
   if (videoFiles.length === 0) {
     console.warn(`[symlinks] No selected video files found for "${title}"`);
-    return;
+    return createdPaths;
   }
 
   for (const file of videoFiles) {
@@ -100,20 +102,25 @@ export async function createSymlinks({
     try {
       await fs.symlink(sourcePath, targetPath);
       console.log(`[symlinks] ${targetPath} → ${sourcePath}`);
+      createdPaths.push(targetPath);
     } catch (e: unknown) {
       const err = e as NodeJS.ErrnoException;
       if (err.code === "EEXIST") {
         // If the existing symlink is dangling (broken target), replace it
         try {
           await fs.access(targetPath);
+          createdPaths.push(targetPath); // still tracking it as a valid path
         } catch {
           await fs.unlink(targetPath);
           await fs.symlink(sourcePath, targetPath);
           console.log(`[symlinks] replaced dangling: ${targetPath} → ${sourcePath}`);
+          createdPaths.push(targetPath);
         }
       } else {
         console.error(`[symlinks] Failed: ${err.message}`);
       }
     }
   }
+
+  return createdPaths;
 }

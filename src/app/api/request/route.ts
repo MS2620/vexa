@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { access } from "fs/promises";
 import { openDb } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { createSymlinks } from "@/lib/symlinks";
+import { addLog } from "@/lib/logger";
 
 export async function POST(req: Request) {
   try {
@@ -55,10 +57,13 @@ export async function POST(req: Request) {
         ],
       );
 
+      await addLog("info", `${requestedBy} requested ${title}`, { tmdbId, mediaType, status: "Pending Approval" });
+
       return NextResponse.json({ success: true, pending: true });
     }
 
     // 1. Add Magnet to Real-Debrid
+    await addLog("info", `Starting process for ${title}`, { infoHash, requestedBy });
     const magnet = `magnet:?xt=urn:btih:${infoHash}`;
     const params = new URLSearchParams();
     params.append("magnet", magnet);
@@ -79,6 +84,7 @@ export async function POST(req: Request) {
 
     // RD returns { error, error_code } on failure
     if (rdData.error) {
+      await addLog("warn", `Real-Debrid rejected ${title}`, { error: rdData.error });
       // infringing_file means RD has blocked this specific torrent
       // Return a specific code so the UI can automatically try the next stream
       return NextResponse.json(
@@ -93,6 +99,7 @@ export async function POST(req: Request) {
 
     // If the torrent is already cached in RD it may return an existing id
     if (!rdData.id) {
+      await addLog("error", `Real-Debrid returned no torrent ID for ${title}`, { response: rdData });
       return NextResponse.json(
         {
           success: false,
@@ -103,6 +110,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Wait briefly for RD to process the magnet, then fetch torrent info
+    await addLog("info", `Waiting for Real-Debrid to process magnet for ${title}...`);
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     const infoRes = await fetch(
@@ -114,6 +122,7 @@ export async function POST(req: Request) {
     console.log("RD torrent info status:", infoData.status);
 
     if (!infoData.files || infoData.files.length === 0) {
+      await addLog("warn", `No files found in torrent for ${title}, waiting for metadata...`);
       return NextResponse.json(
         {
           success: false,
@@ -141,6 +150,8 @@ export async function POST(req: Request) {
 
     const fileParams = new URLSearchParams();
     fileParams.append("files", filesToSelect);
+
+    await addLog("info", `Selecting ${videoFiles.length > 0 ? videoFiles.length : 1} file(s) for ${title} in Real-Debrid`);
 
     await fetch(
       `https://api.real-debrid.com/rest/1.0/torrents/selectFiles/${rdData.id}`,
@@ -180,7 +191,52 @@ export async function POST(req: Request) {
       mediaType: requestedMediaType,
       season: season || null,
       tmdbKey: settings.tmdb_key || "",
-    }).catch((e) => console.error("[symlinks] Error:", e));
+    })
+      .then(async (createdPaths) => {
+        await addLog("success", `Created Plex symlinks for ${title}. Waiting for disk...`);
+
+        // Polling loop to wait for Zurg to expose the first newly created file
+        // We only really need to check if the first target exists, as they usually show up together.
+        if (createdPaths && createdPaths.length > 0) {
+          const checkPath = createdPaths[0];
+          let fileExists = false;
+          let attempts = 0;
+          const maxAttempts = 24; // 2 minutes max (24 * 5 seconds)
+
+          while (!fileExists && attempts < maxAttempts) {
+            try {
+              // We check the symlink path itself; if it's broken, access should fail.
+              await access(checkPath);
+              fileExists = true;
+            } catch (e) {
+              attempts++;
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+          }
+
+          if (fileExists) {
+            await addLog("info", `File verified on disk for ${title}.`);
+          } else {
+            await addLog("warn", `Timed out waiting for file locally: ${title}. Generating scan anyway.`);
+          }
+        }
+
+        const sectionId =
+          requestedMediaType === "tv"
+            ? settings.plex_tv_lib_id
+            : settings.plex_lib_id;
+
+        if (settings.plex_url && settings.plex_token && sectionId && isAdmin) {
+          await addLog("info", `Triggering Plex library scan for ${title} (${requestedMediaType})`);
+          await fetch(
+            `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
+          ).catch((e) => console.error("Plex refresh failed:", e));
+        }
+      })
+      .catch((e) => {
+        console.error("[symlinks] Error:", e);
+        addLog("error", `Failed to create symlinks for ${title}`, { error: e?.message });
+      });
 
     // 6. Save request to SQLite
     await db.run(
@@ -207,25 +263,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, pending: true });
     }
 
-    // 7. Trigger Plex scan after a delay
-    setTimeout(() => {
-      const sectionId =
-        requestedMediaType === "tv"
-          ? settings.plex_tv_lib_id
-          : settings.plex_lib_id;
-
-      if (!settings.plex_url || !settings.plex_token || !sectionId) {
-        return;
-      }
-
-      fetch(
-        `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
-      ).catch((e) => console.error("Plex refresh failed:", e));
-    }, 5000);
-
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Request API error:", error);
+    await addLog("error", `Exception during request`, { error: error.message, stack: error.stack });
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 },

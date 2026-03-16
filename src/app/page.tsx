@@ -1,19 +1,17 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Loader2, Play, ChevronRight, ChevronLeft } from "lucide-react";
+import { ChevronRight, ChevronLeft, Play, Info } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import MediaCard from "./MediaCard";
 
 export default function Dashboard() {
   const [recentlyAdded, setRecentlyAdded] = useState<any[]>([]);
   const [trending, setTrending] = useState<any[]>([]);
   const [watchlist, setWatchlist] = useState<any[]>([]);
-  const [upcomingEpisodes, setUpcomingEpisodes] = useState<any[]>([]);
-  const router = useRouter();
   const [recentRequests, setRecentRequests] = useState<any[]>([]);
-
-  // Modal State
-  const [selectedMedia, setSelectedMedia] = useState<any>(null);
+  const [heroItem, setHeroItem] = useState<any>(null);
+  const router = useRouter();
 
   useEffect(() => {
     // Fetch all dashboard rows
@@ -21,18 +19,23 @@ export default function Dashboard() {
       fetch("/api/dashboard/plex-recent").then((res) => res.json()),
       fetch("/api/dashboard/trending").then((res) => res.json()),
       fetch("/api/dashboard/watchlist").then((res) => res.json()),
-      fetch("/api/dashboard/upcoming-episodes").then((res) => res.json()),
       fetch("/api/dashboard/requests").then((res) => res.json()),
     ]).then(
-      ([plexData, trendingData, watchlistData, upcomingData, requestsData]) => {
+      ([plexData, trendingData, watchlistData, requestsData]) => {
         setRecentlyAdded(plexData.results || []);
-        setTrending(trendingData.results || []);
+        const trendingResults = trendingData.results || [];
+        setTrending(trendingResults);
         setWatchlist(watchlistData.results || []);
-        setUpcomingEpisodes(upcomingData.results || []);
         setRecentRequests(requestsData.results || []);
+
+        if (trendingResults.length > 0) {
+            const random = trendingResults[Math.floor(Math.random() * Math.min(5, trendingResults.length))];
+            setHeroItem(random);
+        }
       },
     );
   }, []);
+
 
   const formatAirDate = (airDate: string) => {
     const date = new Date(`${airDate}T00:00:00.000Z`);
@@ -169,269 +172,182 @@ export default function Dashboard() {
     </div>
   );
 
+  const sectionHeaderClass = "flex items-center justify-between mb-4 px-1";
+  const sectionTitleClass = "text-xl font-bold text-white flex items-center gap-2";
+
   return (
-    <>
-      <div className="space-y-6 md:space-y-8 mt-4 md:mt-6 animate-in fade-in">
-        {/** Shared carousel controls style applied per row */}
-
-        {/* ROW 1: Recently Added */}
-        <section className={sectionClass}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-gray-100">Recently Added</h2>
-            <Link
-              href="/recently-added"
-              className="text-gray-500 hover:text-white transition-colors"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </Link>
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => scrollCarousel("carousel-recent", "left")}
-              className={`${navButtonClass} left-0.5 md:left-1`}
-              aria-label="Scroll Recently Added left"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => scrollCarousel("carousel-recent", "right")}
-              className={`${navButtonClass} right-0.5 md:right-1`}
-              aria-label="Scroll Recently Added right"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <div id="carousel-recent" className={carouselClass}>
-              {recentlyAdded.length > 0 ? (
-                // Everything here is definitely on Plex
-                recentlyAdded.map((media) => (
-                  <PosterCard
-                    key={`recent-${media.id}`}
-                    media={media}
-                    isAvailable={true}
-                  />
-                ))
-              ) : (
-                <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
-                  No recent media found in Plex.
+    <div className="space-y-10 pb-10">
+      
+      {/* HERO SECTION */}
+      {heroItem && (
+        <div className="relative w-full aspect-[2/1] md:aspect-[2.5/1] lg:aspect-[3/1] rounded-3xl overflow-hidden shadow-2xl shadow-black/50 group mt-4">
+            <div className="absolute inset-0">
+                <img 
+                    src={`https://image.tmdb.org/t/p/original${heroItem.backdrop_path || heroItem.poster_path}`} 
+                    alt={heroItem.title || heroItem.name}
+                    className="w-full h-full object-cover"
+                />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0f111a] via-[#0f111a]/60 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0f111a] via-[#0f111a]/40 to-transparent" />
+            
+            <div className="absolute bottom-0 left-0 p-6 md:p-10 w-full md:w-2/3 lg:w-1/2">
+                <span className="inline-block px-3 py-1 rounded-full bg-indigo-600/80 backdrop-blur-md text-white text-xs font-bold uppercase tracking-wider mb-4 border border-indigo-500/50">
+                    Featured
+                </span>
+                <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-3 leading-tight">
+                    {heroItem.title || heroItem.name}
+                </h1>
+                <p className="text-gray-300 text-sm md:text-base line-clamp-2 md:line-clamp-3 mb-6 max-w-xl">
+                    {heroItem.overview}
+                </p>
+                <div className="flex items-center gap-3">
+                    <button 
+                        onClick={() => router.push(`/media/${heroItem.media_type || "movie"}/${heroItem.id}`)}
+                        className="px-6 py-3 rounded-xl bg-white text-black font-bold flex items-center gap-2 hover:bg-gray-200 transition-colors"
+                    >
+                        <Play className="w-5 h-5 fill-current" />
+                        Details
+                    </button>
+                    <button className="px-6 py-3 rounded-xl bg-white/10 backdrop-blur-md text-white font-bold flex items-center gap-2 hover:bg-white/20 transition-colors border border-white/10">
+                        <Info className="w-5 h-5" />
+                        More Info
+                    </button>
                 </div>
-              )}
             </div>
-          </div>
-        </section>
-
-        {/* ROW 2: Recent Requests */}
-        <section className={sectionClass}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
-              Recent Requests
-            </h2>
-            <a
-              href="/requests"
-              className="text-xs text-indigo-400 hover:text-indigo-300"
-            >
-              View All →
-            </a>
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => scrollCarousel("carousel-requests", "left")}
-              className={`${navButtonClass} left-0.5 md:left-1`}
-              aria-label="Scroll Recent Requests left"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => scrollCarousel("carousel-requests", "right")}
-              className={`${navButtonClass} right-0.5 md:right-1`}
-              aria-label="Scroll Recent Requests right"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <div id="carousel-requests" className={carouselClass}>
-              {recentRequests.length > 0 ? (
-                recentRequests.map((req) => (
-                  <RequestCard
-                    key={req.id}
-                    title={req.title}
-                    year={req.requested_at?.substring(0, 4)}
-                    user={req.requested_by}
-                    status={req.status}
-                    seasons={req.season ? [req.season] : undefined}
-                    img={
-                      req.poster_path
-                        ? `https://image.tmdb.org/t/p/w500${req.poster_path}`
-                        : ""
-                    }
-                  />
-                ))
-              ) : (
-                <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
-                  No requests yet.
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* ROW 3: Your Watchlist */}
-        <section className={sectionClass}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
-              Your Watchlist <ChevronRight className="w-4 h-4 text-gray-500" />
-            </h2>
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => scrollCarousel("carousel-watchlist", "left")}
-              className={`${navButtonClass} left-0.5 md:left-1`}
-              aria-label="Scroll Watchlist left"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => scrollCarousel("carousel-watchlist", "right")}
-              className={`${navButtonClass} right-0.5 md:right-1`}
-              aria-label="Scroll Watchlist right"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <div id="carousel-watchlist" className={carouselClass}>
-              {watchlist.length > 0 ? (
-                watchlist.map((media) => (
-                  <PosterCard
-                    key={`watch-${media.id}`}
-                    media={media}
-                    isAvailable={true}
-                  />
-                ))
-              ) : (
-                <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
-                  No ongoing series found in your Plex TV library.
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* ROW 4: Trending */}
-        <section className={sectionClass}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
-              Upcoming Episodes{" "}
-              <ChevronRight className="w-4 h-4 text-gray-500" />
-            </h2>
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => scrollCarousel("carousel-upcoming", "left")}
-              className={`${navButtonClass} left-0.5 md:left-1`}
-              aria-label="Scroll Upcoming Episodes left"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => scrollCarousel("carousel-upcoming", "right")}
-              className={`${navButtonClass} right-0.5 md:right-1`}
-              aria-label="Scroll Upcoming Episodes right"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <div id="carousel-upcoming" className={carouselClass}>
-              {upcomingEpisodes.length > 0 ? (
-                upcomingEpisodes.map((episode) => (
-                  <div
-                    key={`${episode.tmdb_id}-${episode.season_number}-${episode.episode_number}`}
-                    onClick={() => router.push(`/media/tv/${episode.tmdb_id}`)}
-                    className="min-w-[280px] sm:min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer snap-start"
-                  >
-                    <div className="flex-1 flex flex-col">
-                      <span className="text-xs text-indigo-300 mb-0.5">
-                        {formatAirDate(episode.air_date)}
-                      </span>
-                      <h3 className="font-bold text-white leading-tight mb-1">
-                        {episode.show_name}
-                      </h3>
-                      <p className="text-sm text-gray-300 mb-2 line-clamp-2">
-                        {episode.episode_name}
-                      </p>
-                      <div className="mt-auto inline-flex items-center gap-2 text-xs text-gray-400">
-                        <span className="px-2 py-0.5 rounded bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 font-bold">
-                          S{String(episode.season_number).padStart(2, "0")}E
-                          {String(episode.episode_number).padStart(2, "0")}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="w-24 aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden shrink-0">
-                      {episode.poster_path ? (
-                        <img
-                          src={`https://image.tmdb.org/t/p/w500${episode.poster_path}`}
-                          alt={episode.show_name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : null}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
-                  No upcoming episodes in the next 60 days from your watchlist.
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* ROW 5: Trending */}
-        <section className={sectionClass}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
-              Trending <ChevronRight className="w-4 h-4 text-gray-500" />
-            </h2>
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => scrollCarousel("carousel-trending", "left")}
-              className={`${navButtonClass} left-0.5 md:left-1`}
-              aria-label="Scroll Trending left"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => scrollCarousel("carousel-trending", "right")}
-              className={`${navButtonClass} right-0.5 md:right-1`}
-              aria-label="Scroll Trending right"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <div id="carousel-trending" className={carouselClass}>
-              {trending.map((media) => {
-                // Check if this TMDB item exists in our known Plex array
-                const onPlex = recentlyAdded.some(
-                  (plexItem) =>
-                    (plexItem.title || plexItem.name) ===
-                    (media.title || media.name),
-                );
-                return (
-                  <PosterCard
-                    key={`trending-${media.id}`}
-                    media={media}
-                    isAvailable={onPlex}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {/* MODAL (Unchanged) */}
-      {selectedMedia && (
-        <div className="fixed inset-0 bg-[#0f111a]/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#161824] border border-gray-800 rounded-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
-            {/* ... Modal content is identical ... */}
-          </div>
         </div>
       )}
-    </>
+
+      {/* ROW 1: Recently Added */}
+      <section className="relative group">
+        <div className={sectionHeaderClass}>
+          <h2 className={sectionTitleClass}>Recently Added</h2>
+          <Link href="/recently-added" className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1">
+            View All <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
+        
+        <button onClick={() => scrollCarousel("carousel-recent", "left")} className={`${navButtonClass} -left-4`}>
+            <ChevronLeft className="w-5 h-5" />
+        </button>
+        <button onClick={() => scrollCarousel("carousel-recent", "right")} className={`${navButtonClass} -right-4`}>
+            <ChevronRight className="w-5 h-5" />
+        </button>
+        
+        <div id="carousel-recent" className={carouselClass}>
+            {recentlyAdded.length > 0 ? (
+            recentlyAdded.map((media) => (
+                <MediaCard
+                key={`recent-${media.id}`}
+                media={media}
+                isAvailable={true}
+                />
+            ))
+            ) : (
+            <div className="text-gray-500 text-sm italic w-full text-center py-10 border border-dashed border-gray-800 rounded-xl">
+                No recent media found in Plex.
+            </div>
+            )}
+        </div>
+      </section>
+
+      {/* ROW 2: Recent Requests */}
+      <section className="relative group">
+        <div className={sectionHeaderClass}>
+          <h2 className={sectionTitleClass}>Recent Requests</h2>
+          <Link href="/requests" className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1">
+            View All <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
+
+        <button onClick={() => scrollCarousel("carousel-requests", "left")} className={`${navButtonClass} -left-4`}>
+            <ChevronLeft className="w-5 h-5" />
+        </button>
+        <button onClick={() => scrollCarousel("carousel-requests", "right")} className={`${navButtonClass} -right-4`}>
+            <ChevronRight className="w-5 h-5" />
+        </button>
+
+        <div id="carousel-requests" className={carouselClass}>
+            {recentRequests.length > 0 ? (
+            recentRequests.map((req) => (
+                <MediaCard
+                key={`req-${req.id}`}
+                media={req}
+                type="wide"
+                status={req.status}
+                user={req.requested_by}
+                />
+            ))
+            ) : (
+            <div className="text-gray-500 text-sm italic w-full text-center py-10 border border-dashed border-gray-800 rounded-xl">
+                No requests yet.
+            </div>
+            )}
+        </div>
+      </section>
+
+
+
+      {/* ROW 4: Watchlist */}
+      <section className="relative group">
+        <div className={sectionHeaderClass}>
+          <h2 className={sectionTitleClass}>Your Watchlist</h2>
+        </div>
+        
+        <button onClick={() => scrollCarousel("carousel-watchlist", "left")} className={`${navButtonClass} -left-4`}>
+            <ChevronLeft className="w-5 h-5" />
+        </button>
+        <button onClick={() => scrollCarousel("carousel-watchlist", "right")} className={`${navButtonClass} -right-4`}>
+            <ChevronRight className="w-5 h-5" />
+        </button>
+
+        <div id="carousel-watchlist" className={carouselClass}>
+            {watchlist.length > 0 ? (
+            watchlist.map((media) => (
+                <MediaCard
+                key={`watch-${media.id}`}
+                media={media}
+                isAvailable={true}
+                />
+            ))
+            ) : (
+            <div className="text-gray-500 text-sm italic w-full text-center py-10 border border-dashed border-gray-800 rounded-xl">
+                Your watchlist is empty.
+            </div>
+            )}
+        </div>
+      </section>
+
+      {/* ROW 5: Trending */}
+      <section className="relative group">
+        <div className={sectionHeaderClass}>
+          <h2 className={sectionTitleClass}>Trending Now</h2>
+        </div>
+        
+        <button onClick={() => scrollCarousel("carousel-trending", "left")} className={`${navButtonClass} -left-4`}>
+            <ChevronLeft className="w-5 h-5" />
+        </button>
+        <button onClick={() => scrollCarousel("carousel-trending", "right")} className={`${navButtonClass} -right-4`}>
+            <ChevronRight className="w-5 h-5" />
+        </button>
+
+        <div id="carousel-trending" className={carouselClass}>
+            {trending.map((media) => {
+            const onPlex = recentlyAdded.some(
+                (plexItem) =>
+                (plexItem.title || plexItem.name) ===
+                (media.title || media.name),
+            );
+            return (
+                <MediaCard
+                key={`trending-${media.id}`}
+                media={media}
+                isAvailable={onPlex}
+                />
+            );
+            })}
+        </div>
+      </section>
+    </div>
   );
 }

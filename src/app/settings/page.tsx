@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import toast from "react-hot-toast";
 import {
   Save,
   Loader2,
@@ -33,7 +34,6 @@ export default function Settings() {
     smtp_pass: "",
     smtp_from: "",
   });
-  const [saveStatus, setSaveStatus] = useState("");
   const [serviceStatus, setServiceStatus] = useState<any>(null);
   const [statusLoading, setStatusLoading] = useState(true);
 
@@ -109,24 +109,35 @@ export default function Settings() {
   }, []);
 
   const handleSave = async () => {
-    setSaveStatus("Saving...");
-    await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData),
-    });
-    setSaveStatus("Saved successfully!");
-    setTimeout(() => setSaveStatus(""), 3000);
+    toast.promise(
+      fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      }),
+      {
+        loading: "Saving...",
+        success: "Saved successfully!",
+        error: "Failed to save configuration",
+      },
+    );
   };
 
   return (
-    <div className="max-w-3xl mt-6 animate-in fade-in space-y-8">
-      <h1 className="text-2xl font-bold">Configuration</h1>
+    <div className="pt-4 pb-12 px-6 md:px-12 animate-in fade-in duration-500 max-w-5xl mx-auto space-y-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-2 gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-1">Configuration</h1>
+          <p className="text-gray-400 text-sm">
+            Manage API keys, integrations, and preferences
+          </p>
+        </div>
+      </div>
 
       {/* ── LIVE STATUS PANEL ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Real-Debrid Card */}
-        <div className="bg-[#161824] border border-gray-800 rounded-xl p-5">
+        <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Real-Debrid</h3>
             {statusLoading ? (
@@ -174,7 +185,7 @@ export default function Settings() {
             </div>
           )}
           {serviceStatus?.rd?.torrents?.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-gray-800">
+            <div className="mt-4 pt-4 border-t border-white/5">
               <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">
                 Recent Torrents
               </p>
@@ -206,7 +217,7 @@ export default function Settings() {
         </div>
 
         {/* Plex Card */}
-        <div className="bg-[#161824] border border-gray-800 rounded-xl p-5">
+        <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Plex</h3>
             {statusLoading ? (
@@ -236,7 +247,7 @@ export default function Settings() {
       </div>
 
       {/* ── CONFIGURATION FORM ── */}
-      <div className="bg-[#161824] border border-gray-800/50 rounded-xl p-8 space-y-6">
+      <div className="bg-[#161824] border border-white/5 rounded-xl p-6 md:p-8 space-y-8 shadow-lg shadow-black/20">
         {/* Core API Keys */}
         <div>
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
@@ -253,7 +264,7 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, tmdb_key: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
             <div>
@@ -266,13 +277,13 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, rd_token: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
           </div>
         </div>
 
-        <div className="border-t border-gray-800" />
+        <div className="border-t border-white/5" />
 
         {/* Plex */}
         <div>
@@ -291,7 +302,7 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, plex_url: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
             <div>
@@ -304,7 +315,7 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, plex_token: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
             <div>
@@ -318,7 +329,7 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, plex_lib_id: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
             <div>
@@ -332,13 +343,13 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, plex_tv_lib_id: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
           </div>
         </div>
 
-        <div className="border-t border-gray-800" />
+        <div className="border-t border-white/5" />
 
         {/* Stream Preferences */}
         <div>
@@ -358,7 +369,7 @@ export default function Settings() {
                     preferred_resolution: e.target.value,
                   })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500 text-white"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               >
                 <option value="2160p">4K (2160p)</option>
                 <option value="1080p">1080p</option>
@@ -378,7 +389,7 @@ export default function Settings() {
                     preferred_language: e.target.value,
                   })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500 text-white"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               >
                 <option value="en">English</option>
                 <option value="multi">Multi</option>
@@ -395,7 +406,7 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="border-t border-gray-800" />
+        <div className="border-t border-white/5" />
 
         {/* SMTP Notifications */}
         <div>
@@ -414,7 +425,7 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, smtp_host: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
             <div>
@@ -428,7 +439,7 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, smtp_port: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
             <div>
@@ -441,7 +452,7 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, smtp_user: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
             <div>
@@ -454,7 +465,7 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, smtp_pass: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
             <div className="md:col-span-2">
@@ -468,18 +479,18 @@ export default function Settings() {
                 onChange={(e) =>
                   setFormData({ ...formData, smtp_from: e.target.value })
                 }
-                className="w-full bg-[#0f111a] border border-gray-700 rounded-lg p-3 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
             </div>
           </div>
         </div>
 
         {/* Save Button */}
-        <div className="pt-2 flex items-center justify-between border-t border-gray-800">
-          <span className="text-green-400 text-sm">{saveStatus}</span>
+        <div className="pt-2 flex items-center justify-between border-t border-white/5">
+          <span className="text-green-400 text-sm"></span>
           <button
             onClick={handleSave}
-            className="bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-lg flex items-center gap-2 font-medium transition-colors"
+            className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors shadow-lg shadow-indigo-500/25"
           >
             <Save className="w-5 h-5" /> Save Configuration
           </button>
@@ -487,7 +498,7 @@ export default function Settings() {
       </div>
 
       {/* ── LIBRARY SYNC ── */}
-      <div className="bg-[#161824] border border-gray-800/50 rounded-xl p-8 space-y-5">
+      <div className="bg-[#161824] border border-white/5 rounded-xl p-6 md:p-8 space-y-6 shadow-lg shadow-black/20">
         <div>
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-1">
             Library Sync
@@ -542,13 +553,17 @@ export default function Settings() {
 
         {/* Tabbed results */}
         {syncItems.length > 0 && (
-          <div className="rounded-lg bg-[#0f111a] border border-gray-800 overflow-hidden">
+          <div className="rounded-lg bg-[#0f111a] border border-white/5 overflow-hidden">
             {/* Tab bar */}
-            <div className="flex border-b border-gray-800">
+            <div className="flex border-b border-white/5">
               {(
                 [
                   { key: "synced", label: "Synced", color: "text-green-400" },
-                  { key: "skipped", label: "Skipped", color: "text-yellow-400" },
+                  {
+                    key: "skipped",
+                    label: "Skipped",
+                    color: "text-yellow-400",
+                  },
                   { key: "failed", label: "Failed", color: "text-red-400" },
                 ] as const
               ).map(({ key, label, color }) => {
@@ -627,7 +642,7 @@ export default function Settings() {
         <button
           onClick={handleSync}
           disabled={syncState === "running"}
-          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:text-indigo-400 rounded-lg text-sm font-medium transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors shadow-lg shadow-indigo-500/25"
         >
           {syncState === "running" ? (
             <>

@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
 import { openDb } from "@/lib/db";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const db = await openDb();
+    const url = new URL(req.url);
+    const statusFilter = url.searchParams.get("status");
+
+    if (statusFilter === "pending") {
+      const pendingReqs = await db.all(`
+        SELECT * FROM requests 
+        WHERE status = 'Pending Approval' 
+        ORDER BY requested_at DESC
+      `);
+      return NextResponse.json({ results: pendingReqs || [] });
+    }
 
     // Group by title, show the most recent request per title
     // and aggregate season numbers into a comma-separated list
