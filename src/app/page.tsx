@@ -197,20 +197,20 @@ export default function Dashboard() {
               id="carousel-recent"
               className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
             >
-            {recentlyAdded.length > 0 ? (
-              // Everything here is definitely on Plex
-              recentlyAdded.map((media) => (
-                <PosterCard
-                  key={`recent-${media.id}`}
-                  media={media}
-                  isAvailable={true}
-                />
-              ))
-            ) : (
-              <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
-                No recent media found in Plex.
-              </div>
-            )}
+              {recentlyAdded.length > 0 ? (
+                // Everything here is definitely on Plex
+                recentlyAdded.map((media) => (
+                  <PosterCard
+                    key={`recent-${media.id}`}
+                    media={media}
+                    isAvailable={true}
+                  />
+                ))
+              ) : (
+                <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
+                  No recent media found in Plex.
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -247,27 +247,27 @@ export default function Dashboard() {
               id="carousel-requests"
               className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
             >
-            {recentRequests.length > 0 ? (
-              recentRequests.map((req) => (
-                <RequestCard
-                  key={req.id}
-                  title={req.title}
-                  year={req.requested_at?.substring(0, 4)}
-                  user={req.requested_by}
-                  status={req.status}
-                  seasons={req.season ? [req.season] : undefined}
-                  img={
-                    req.poster_path
-                      ? `https://image.tmdb.org/t/p/w500${req.poster_path}`
-                      : ""
-                  }
-                />
-              ))
-            ) : (
-              <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
-                No requests yet.
-              </div>
-            )}
+              {recentRequests.length > 0 ? (
+                recentRequests.map((req) => (
+                  <RequestCard
+                    key={req.id}
+                    title={req.title}
+                    year={req.requested_at?.substring(0, 4)}
+                    user={req.requested_by}
+                    status={req.status}
+                    seasons={req.season ? [req.season] : undefined}
+                    img={
+                      req.poster_path
+                        ? `https://image.tmdb.org/t/p/w500${req.poster_path}`
+                        : ""
+                    }
+                  />
+                ))
+              ) : (
+                <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
+                  No requests yet.
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -298,19 +298,19 @@ export default function Dashboard() {
               id="carousel-watchlist"
               className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
             >
-            {watchlist.length > 0 ? (
-              watchlist.map((media) => (
-                <PosterCard
-                  key={`watch-${media.id}`}
-                  media={media}
-                  isAvailable={true}
-                />
-              ))
-            ) : (
-              <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
-                No ongoing series found in your Plex TV library.
-              </div>
-            )}
+              {watchlist.length > 0 ? (
+                watchlist.map((media) => (
+                  <PosterCard
+                    key={`watch-${media.id}`}
+                    media={media}
+                    isAvailable={true}
+                  />
+                ))
+              ) : (
+                <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
+                  No ongoing series found in your Plex TV library.
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -342,46 +342,46 @@ export default function Dashboard() {
               id="carousel-upcoming"
               className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
             >
-            {upcomingEpisodes.length > 0 ? (
-              upcomingEpisodes.map((episode) => (
-                <div
-                  key={`${episode.tmdb_id}-${episode.season_number}-${episode.episode_number}`}
-                  onClick={() => router.push(`/media/tv/${episode.tmdb_id}`)}
-                  className="min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer snap-start"
-                >
-                  <div className="flex-1 flex flex-col">
-                    <span className="text-xs text-indigo-300 mb-0.5">
-                      {formatAirDate(episode.air_date)}
-                    </span>
-                    <h3 className="font-bold text-white leading-tight mb-1">
-                      {episode.show_name}
-                    </h3>
-                    <p className="text-sm text-gray-300 mb-2 line-clamp-2">
-                      {episode.episode_name}
-                    </p>
-                    <div className="mt-auto inline-flex items-center gap-2 text-xs text-gray-400">
-                      <span className="px-2 py-0.5 rounded bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 font-bold">
-                        S{String(episode.season_number).padStart(2, "0")}E
-                        {String(episode.episode_number).padStart(2, "0")}
+              {upcomingEpisodes.length > 0 ? (
+                upcomingEpisodes.map((episode) => (
+                  <div
+                    key={`${episode.tmdb_id}-${episode.season_number}-${episode.episode_number}`}
+                    onClick={() => router.push(`/media/tv/${episode.tmdb_id}`)}
+                    className="min-w-[300px] md:min-w-[340px] bg-[#161824] border border-gray-800 rounded-xl p-4 flex gap-4 shrink-0 hover:border-gray-700 transition-colors cursor-pointer snap-start"
+                  >
+                    <div className="flex-1 flex flex-col">
+                      <span className="text-xs text-indigo-300 mb-0.5">
+                        {formatAirDate(episode.air_date)}
                       </span>
+                      <h3 className="font-bold text-white leading-tight mb-1">
+                        {episode.show_name}
+                      </h3>
+                      <p className="text-sm text-gray-300 mb-2 line-clamp-2">
+                        {episode.episode_name}
+                      </p>
+                      <div className="mt-auto inline-flex items-center gap-2 text-xs text-gray-400">
+                        <span className="px-2 py-0.5 rounded bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 font-bold">
+                          S{String(episode.season_number).padStart(2, "0")}E
+                          {String(episode.episode_number).padStart(2, "0")}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-24 aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden shrink-0">
+                      {episode.poster_path ? (
+                        <img
+                          src={`https://image.tmdb.org/t/p/w500${episode.poster_path}`}
+                          alt={episode.show_name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : null}
                     </div>
                   </div>
-                  <div className="w-24 aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden shrink-0">
-                    {episode.poster_path ? (
-                      <img
-                        src={`https://image.tmdb.org/t/p/w500${episode.poster_path}`}
-                        alt={episode.show_name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : null}
-                  </div>
+                ))
+              ) : (
+                <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
+                  No upcoming episodes in the next 60 days from your watchlist.
                 </div>
-              ))
-            ) : (
-              <div className="text-gray-500 text-sm py-8 px-4 bg-[#161824] rounded-xl border border-gray-800 w-full">
-                No upcoming episodes in the next 60 days from your watchlist.
-              </div>
-            )}
+              )}
             </div>
           </div>
         </section>
@@ -412,21 +412,21 @@ export default function Dashboard() {
               id="carousel-trending"
               className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory"
             >
-            {trending.map((media) => {
-              // Check if this TMDB item exists in our known Plex array
-              const onPlex = recentlyAdded.some(
-                (plexItem) =>
-                  (plexItem.title || plexItem.name) ===
-                  (media.title || media.name),
-              );
-              return (
-                <PosterCard
-                  key={`trending-${media.id}`}
-                  media={media}
-                  isAvailable={onPlex}
-                />
-              );
-            })}
+              {trending.map((media) => {
+                // Check if this TMDB item exists in our known Plex array
+                const onPlex = recentlyAdded.some(
+                  (plexItem) =>
+                    (plexItem.title || plexItem.name) ===
+                    (media.title || media.name),
+                );
+                return (
+                  <PosterCard
+                    key={`trending-${media.id}`}
+                    media={media}
+                    isAvailable={onPlex}
+                  />
+                );
+              })}
             </div>
           </div>
         </section>
