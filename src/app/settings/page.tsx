@@ -43,12 +43,16 @@ export default function Settings() {
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
   const [syncItems, setSyncItems] = useState<SyncItem[]>([]);
   const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
+  const [syncTab, setSyncTab] = useState<"synced" | "skipped" | "failed">(
+    "synced",
+  );
 
   const handleSync = async () => {
     setSyncState("running");
     setSyncItems([]);
     setSyncProgress({ current: 0, total: 0 });
     setSyncSummary(null);
+    setSyncTab("synced");
 
     const res = await fetch("/api/symlinks/sync", { method: "POST" });
     if (!res.ok || !res.body) {
@@ -71,7 +75,7 @@ export default function Settings() {
           else if (event.type === "progress")
             setSyncProgress({ current: event.current, total: event.total });
           else if (event.type === "item")
-            setSyncItems((prev) => [...prev.slice(-49), event]);
+            setSyncItems((prev) => [...prev, event]);
           else if (event.type === "done") {
             setSyncSummary(event);
             setSyncState("done");
@@ -524,30 +528,87 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Results list — last 50 items */}
+        {/* Tabbed results */}
         {syncItems.length > 0 && (
-          <div className="max-h-56 overflow-y-auto space-y-1 rounded-lg bg-[#0f111a] border border-gray-800 p-3">
-            {syncItems.map((item, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs">
-                {item.status === "synced" && (
-                  <CheckCircle className="w-3.5 h-3.5 text-green-400 mt-0.5 shrink-0" />
-                )}
-                {item.status === "skipped" && (
-                  <SkipForward className="w-3.5 h-3.5 text-yellow-400 mt-0.5 shrink-0" />
-                )}
-                {item.status === "failed" && (
-                  <XCircle className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
-                )}
-                <div className="min-w-0">
-                  <span className="text-gray-300 truncate block">
-                    {item.title ?? item.filename}
-                  </span>
-                  {item.reason && (
-                    <span className="text-gray-600">{item.reason}</span>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="rounded-lg bg-[#0f111a] border border-gray-800 overflow-hidden">
+            {/* Tab bar */}
+            <div className="flex border-b border-gray-800">
+              {(
+                [
+                  { key: "synced", label: "Synced", color: "text-green-400" },
+                  { key: "skipped", label: "Skipped", color: "text-yellow-400" },
+                  { key: "failed", label: "Failed", color: "text-red-400" },
+                ] as const
+              ).map(({ key, label, color }) => {
+                const count = syncItems.filter((i) => i.status === key).length;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setSyncTab(key)}
+                    className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${
+                      syncTab === key
+                        ? `bg-[#161824] border-b-2 ${
+                            key === "synced"
+                              ? "border-green-500"
+                              : key === "skipped"
+                                ? "border-yellow-500"
+                                : "border-red-500"
+                          } ${color}`
+                        : "text-gray-500 hover:text-gray-300"
+                    }`}
+                  >
+                    {label}{" "}
+                    <span
+                      className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
+                        syncTab === key ? "bg-gray-700" : "bg-gray-800"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tab content */}
+            <div className="max-h-64 overflow-y-auto p-3 space-y-1">
+              {syncItems.filter((i) => i.status === syncTab).length === 0 ? (
+                <p className="text-xs text-gray-600 text-center py-4">
+                  No {syncTab} items yet
+                </p>
+              ) : (
+                syncItems
+                  .filter((i) => i.status === syncTab)
+                  .map((item, idx) => (
+                    <div key={idx} className="flex items-start gap-2 text-xs">
+                      {item.status === "synced" && (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-400 mt-0.5 shrink-0" />
+                      )}
+                      {item.status === "skipped" && (
+                        <SkipForward className="w-3.5 h-3.5 text-yellow-400 mt-0.5 shrink-0" />
+                      )}
+                      {item.status === "failed" && (
+                        <XCircle className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <span className="text-gray-300 block truncate">
+                          {item.status === "synced"
+                            ? item.title
+                            : item.filename}
+                        </span>
+                        {item.status === "synced" && item.filename && (
+                          <span className="text-gray-600 block truncate">
+                            {item.filename}
+                          </span>
+                        )}
+                        {item.reason && (
+                          <span className="text-gray-600">{item.reason}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
           </div>
         )}
 
