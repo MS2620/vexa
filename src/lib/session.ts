@@ -8,12 +8,11 @@ export interface SessionData {
 }
 
 export const sessionOptions = {
-  // In a real app, this should be an env variable. 
-  // For a homelab docker container, a hardcoded fallback is acceptable but not ideal.
   password: process.env.SESSION_SECRET || 'complex_password_at_least_32_characters_long',
   cookieName: 'debrid_manager_session',
   cookieOptions: {
-    secure: process.env.NODE_ENV === 'production',
+    // Only enforce HTTPS cookies when explicitly opted in — homelab setups typically use HTTP
+    secure: process.env.SECURE_COOKIES === 'true',
   },
 };
 
