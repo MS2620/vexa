@@ -69,9 +69,15 @@ export async function createSymlinks({
   }
 
   for (const file of videoFiles) {
-    // RD file.path is like "/TorrentName/video.mkv"
-    // zurg __all__ maps to: DEBRID_MOUNT + file.path
-    const sourcePath = path.join(DEBRID_MOUNT, file.path);
+    // RD file.path is "/TorrentFolder/video.mkv" for multi-file torrents,
+    // or just "/video.mkv" for flat torrents (no root folder in the torrent).
+    // Zurg always wraps files in __all__ under infoData.filename, so for flat
+    // torrents we must prepend that folder name manually.
+    const parts = file.path.replace(/^\//, "").split("/");
+    const sourcePath =
+      parts.length === 1
+        ? path.join(DEBRID_MOUNT, infoData.filename, parts[0])
+        : path.join(DEBRID_MOUNT, file.path);
 
     let targetDir: string;
     if (mediaType === "movie") {
@@ -95,11 +101,18 @@ export async function createSymlinks({
       await fs.symlink(sourcePath, targetPath);
       console.log(`[symlinks] ${targetPath} → ${sourcePath}`);
     } catch (e: unknown) {
-      if (
-        e instanceof Error &&
-        (e as NodeJS.ErrnoException).code !== "EEXIST"
-      ) {
-        console.error(`[symlinks] Failed: ${e.message}`);
+      const err = e as NodeJS.ErrnoException;
+      if (err.code === "EEXIST") {
+        // If the existing symlink is dangling (broken target), replace it
+        try {
+          await fs.access(targetPath);
+        } catch {
+          await fs.unlink(targetPath);
+          await fs.symlink(sourcePath, targetPath);
+          console.log(`[symlinks] replaced dangling: ${targetPath} → ${sourcePath}`);
+        }
+      } else {
+        console.error(`[symlinks] Failed: ${err.message}`);
       }
     }
   }
