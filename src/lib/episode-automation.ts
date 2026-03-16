@@ -34,6 +34,14 @@ const globalState = globalThis as typeof globalThis & {
   __episodeAutomationLastMorningDate?: string;
 };
 
+function episodeLabel(ep: {
+  showName: string;
+  season: number;
+  episode: number;
+}): string {
+  return `${ep.showName} S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")}`;
+}
+
 function dateKey(date: Date): string {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -385,7 +393,12 @@ async function attemptEpisodeDownload(ep: EpisodeCandidate): Promise<boolean> {
     ep.season,
     ep.episode,
   );
-  if (candidateHashes.length === 0) return false;
+  if (candidateHashes.length === 0) {
+    console.log(
+      `[automation] No streams found for ${episodeLabel(ep)} (tmdb:${ep.tmdbId})`,
+    );
+    return false;
+  }
 
   for (const hash of candidateHashes) {
     const ok = await downloadInfoHash(
@@ -396,29 +409,60 @@ async function attemptEpisodeDownload(ep: EpisodeCandidate): Promise<boolean> {
       ep.season,
       ep.episode,
     );
-    if (ok) return true;
+    if (ok) {
+      console.log(
+        `[automation] Download started for ${episodeLabel(ep)} with hash ${hash.slice(0, 8)}...`,
+      );
+      return true;
+    }
   }
 
+  console.log(
+    `[automation] Tried ${candidateHashes.length} stream(s) but none succeeded for ${episodeLabel(ep)}`,
+  );
   return false;
 }
 
 async function runEveningScan(todayKey: string): Promise<void> {
+  console.log(`[automation] Evening scan started for ${todayKey}`);
   const todaysEpisodes = await getWatchlistCandidatesForDate(todayKey);
-  if (todaysEpisodes.length === 0) return;
+  if (todaysEpisodes.length === 0) {
+    console.log(
+      "[automation] Evening scan: no watchlist episodes airing today",
+    );
+    return;
+  }
+
+  let downloaded = 0;
+  let queued = 0;
+
+  console.log(
+    `[automation] Evening scan: ${todaysEpisodes.length} candidate episode(s)`,
+  );
 
   for (const ep of todaysEpisodes) {
     const success = await attemptEpisodeDownload(ep);
     if (success) {
       await markPendingAsDownloaded(ep.tmdbId, ep.season, ep.episode);
+      downloaded++;
     } else {
       await upsertPendingRetry(ep);
+      queued++;
     }
   }
+
+  console.log(
+    `[automation] Evening scan complete: downloaded=${downloaded}, queued_for_retry=${queued}`,
+  );
 }
 
 async function runMorningRetry(today: Date): Promise<void> {
   const db = await openDb();
   const yesterdayKey = dateKey(addDays(today, -1));
+
+  console.log(
+    `[automation] Morning retry started for pending episodes up to ${yesterdayKey}`,
+  );
 
   const pending = await db.all<
     {
@@ -437,6 +481,18 @@ async function runMorningRetry(today: Date): Promise<void> {
     [yesterdayKey],
   );
 
+  if (pending.length === 0) {
+    console.log("[automation] Morning retry: no pending episodes to check");
+    return;
+  }
+
+  let downloaded = 0;
+  let stillPending = 0;
+
+  console.log(
+    `[automation] Morning retry: ${pending.length} pending episode(s)`,
+  );
+
   for (const ep of pending) {
     const success = await attemptEpisodeDownload({
       tmdbId: ep.tmdb_id,
@@ -450,6 +506,7 @@ async function runMorningRetry(today: Date): Promise<void> {
 
     if (success) {
       await markPendingAsDownloaded(ep.tmdb_id, ep.season, ep.episode);
+      downloaded++;
     } else {
       await upsertPendingRetry({
         tmdbId: ep.tmdb_id,
@@ -460,8 +517,13 @@ async function runMorningRetry(today: Date): Promise<void> {
         episodeName: ep.episode_name,
         airDate: ep.air_date,
       });
+      stillPending++;
     }
   }
+
+  console.log(
+    `[automation] Morning retry complete: downloaded=${downloaded}, still_pending=${stillPending}`,
+  );
 }
 
 async function tick(): Promise<void> {
@@ -479,6 +541,7 @@ async function tick(): Promise<void> {
       hour <= 22 &&
       globalState.__episodeAutomationLastEveningDate !== todayKey
     ) {
+      console.log("[automation] Triggering evening window run");
       await runEveningScan(todayKey);
       globalState.__episodeAutomationLastEveningDate = todayKey;
     }
@@ -489,6 +552,7 @@ async function tick(): Promise<void> {
       hour <= 10 &&
       globalState.__episodeAutomationLastMorningDate !== todayKey
     ) {
+      console.log("[automation] Triggering morning retry window run");
       await runMorningRetry(now);
       globalState.__episodeAutomationLastMorningDate = todayKey;
     }
