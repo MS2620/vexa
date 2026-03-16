@@ -1,11 +1,13 @@
-# Full stack: zurg (RD mount) + rclone (FUSE) + debrid-dashboard app
+# Full stack: zurg (RD mount) + rclone (FUSE) + debrid-dashboard app + Plex
 #
 # Prerequisites on the HOST:
 #   sudo mkdir -p /mnt/zurg /mnt/plex_symlinks
 #   sudo chmod 755 /mnt/zurg /mnt/plex_symlinks
 #
 # 1. Copy config/zurg.yml.example → config/zurg.yml and fill in your RD token
-# 2. Create a .env file with: SESSION_SECRET=<at_least_32_chars>
+# 2. Create a .env file:
+#      SESSION_SECRET=<at_least_32_chars>
+#      PLEX_CLAIM=<from https://plex.tv/claim>  (only needed first boot)
 # 3. Run: docker compose up -d
 
 services:
@@ -24,13 +26,8 @@ services:
     image: rclone/rclone:latest
     container_name: rclone
     restart: unless-stopped
-    # FUSE requires elevated capabilities
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    devices:
-      - /dev/fuse:/dev/fuse:rwm
+    # privileged lets the container create /dev/fuse itself if the host doesn't have it
+    privileged: true
     volumes:
       - ./config/rclone.conf:/config/rclone/rclone.conf:ro
       # Bind-mount with 'shared' so the app container sees what rclone mounts here
@@ -39,15 +36,16 @@ services:
         target: /mnt/zurg
         bind:
           propagation: shared
+    entrypoint: /bin/sh
     command: >
-      mount zurg: /mnt/zurg
+      -c "mknod /dev/fuse c 10 229 2>/dev/null || true
+      && chmod 666 /dev/fuse
+      && rclone mount zurg: /mnt/zurg
       --allow-non-empty
       --allow-other
       --dir-cache-time 10s
       --vfs-cache-mode off
-      --no-checksum
-      --uid 1001
-      --gid 1001
+      --no-checksum"
     depends_on:
       - zurg
 
@@ -75,6 +73,30 @@ services:
     depends_on:
       - rclone
 
+  plex:
+    image: linuxserver/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    network_mode: host        # lets Plex be discoverable on the local network
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM:-}   # grab from https://plex.tv/claim (expires in 4 min, only needed first boot)
+    volumes:
+      - plex-config:/config
+      # Media library — symlinks live here
+      - /mnt/plex_symlinks:/mnt/plex_symlinks:ro
+      # Symlink targets — Plex must follow symlinks into the zurg mount
+      - type: bind
+        source: /mnt/zurg
+        target: /mnt/zurg
+        bind:
+          propagation: slave
+    depends_on:
+      - rclone
+
 volumes:
   debrid-data:
   zurg-data:
+  plex-config:
