@@ -13,18 +13,30 @@ type ParsedName = {
 // Extract title, year, type, and season from a raw torrent filename.
 // Handles the most common naming conventions — not perfect, but covers >90% of real-world cases.
 function parseTorrentName(filename: string): ParsedName {
+  // Strip common video file extensions (e.g. "Shrek (2001).mkv")
+  let s = filename.replace(/\.(mkv|mp4|avi|mov|wmv|m4v|ts|iso)$/i, "");
+
+  // Strip site watermark prefixes: "[ Torrent911.si ]", "[www.site.com]"
+  s = s.replace(/^\[[\w\s.:-]+\]\s*/, "");
+
   // Normalise dots/underscores to spaces
-  const s = filename.replace(/[._]/g, " ").trim();
+  s = s.replace(/[._]/g, " ").trim();
+
+  // Strip bracketed quality/language tags like [2160p], [HDR], [ger, eng] — but not bare years
+  s = s.replace(/\[(?!\d{4}\])[^\]]*\]/g, " ");
+
+  // Collapse multiple spaces
+  s = s.replace(/\s{2,}/g, " ").trim();
 
   // TV — episode marker: ShowName S01E01
   const sxex = s.match(/^(.+?)\s+[Ss](\d{1,2})[Ee]\d{1,2}/i);
-  if (sxex)
-    return {
-      title: cleanTitle(sxex[1]),
-      year: null,
-      mediaType: "tv",
-      season: parseInt(sxex[2]),
-    };
+  if (sxex) {
+    // Strip a trailing year that dot-normalisation may have placed in the show title (e.g. "S W A T 2017")
+    const tvTitle = cleanTitle(sxex[1])
+      .replace(/\s+(?:19|20)\d{2}$/, "")
+      .trim();
+    return { title: tvTitle, year: null, mediaType: "tv", season: parseInt(sxex[2]) };
+  }
 
   // TV — season pack: ShowName Season 2 / ShowName S02
   const pack = s.match(
@@ -32,16 +44,25 @@ function parseTorrentName(filename: string): ParsedName {
   );
   if (pack) {
     const season = parseInt(pack[2] ?? pack[3]);
-    if (!isNaN(season))
-      return {
-        title: cleanTitle(pack[1]),
-        year: null,
-        mediaType: "tv",
-        season,
-      };
+    if (!isNaN(season)) {
+      const tvTitle = cleanTitle(pack[1])
+        .replace(/\s+(?:19|20)\d{2}$/, "")
+        .trim();
+      return { title: tvTitle, year: null, mediaType: "tv", season };
+    }
   }
 
-  // Movie — title followed by a 4-digit year
+  // Movie — year inside parentheses, possibly with extra content: "Title (2001)" or "Title (2001 ITA-ENG)"
+  const withYearParen = s.match(/^(.+?)\s+\(((?:19|20)\d{2})[^)]*\)/);
+  if (withYearParen)
+    return {
+      title: cleanTitle(withYearParen[1]),
+      year: withYearParen[2],
+      mediaType: "movie",
+      season: null,
+    };
+
+  // Movie — bare year: "Title 2001 BluRay…"
   const withYear = s.match(/^(.+?)\s+((?:19|20)\d{2})(?:\s|$)/);
   if (withYear)
     return {
