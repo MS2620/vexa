@@ -40,22 +40,11 @@ function parseTorrentName(filename: string): ParsedName {
   // TV — S01-S04 multi-season range: "ShowName S01-S04"
   const multiSeason = s.match(/^(.+?)\s+[Ss](\d{1,2})-[Ss]\d{1,2}/i);
   if (multiSeason)
-    return {
-      title: cleanTvTitle(cleanTitle(multiSeason[1])),
-      year: null,
-      mediaType: "tv",
-      season: parseInt(multiSeason[2]),
-    };
+    return buildTvParsedName(multiSeason[1], parseInt(multiSeason[2]));
 
   // TV — episode marker: ShowName S01E01
   const sxex = s.match(/^(.+?)\s+[Ss](\d{1,2})[Ee]\d{1,2}/i);
-  if (sxex)
-    return {
-      title: cleanTvTitle(cleanTitle(sxex[1])),
-      year: null,
-      mediaType: "tv",
-      season: parseInt(sxex[2]),
-    };
+  if (sxex) return buildTvParsedName(sxex[1], parseInt(sxex[2]));
 
   // TV — (Season N) or (S03) in parentheses: "The Rookie (Season 3)", "The Blacklist (S03)"
   const parenSeason = s.match(
@@ -63,13 +52,7 @@ function parseTorrentName(filename: string): ParsedName {
   );
   if (parenSeason) {
     const season = parseInt(parenSeason[2] ?? parenSeason[3]);
-    if (!isNaN(season))
-      return {
-        title: cleanTvTitle(cleanTitle(parenSeason[1])),
-        year: null,
-        mediaType: "tv",
-        season,
-      };
+    if (!isNaN(season)) return buildTvParsedName(parenSeason[1], season);
   }
 
   // TV — bare season pack: ShowName Season 2 / ShowName S02
@@ -78,13 +61,7 @@ function parseTorrentName(filename: string): ParsedName {
   );
   if (pack) {
     const season = parseInt(pack[2] ?? pack[3]);
-    if (!isNaN(season))
-      return {
-        title: cleanTvTitle(cleanTitle(pack[1])),
-        year: null,
-        mediaType: "tv",
-        season,
-      };
+    if (!isNaN(season)) return buildTvParsedName(pack[1], season);
   }
 
   // TV — explicit "Season S01" form: "NCIS 2003 Season S01"
@@ -93,13 +70,7 @@ function parseTorrentName(filename: string): ParsedName {
   );
   if (seasonWithSPrefix) {
     const season = parseInt(seasonWithSPrefix[2]);
-    if (!isNaN(season))
-      return {
-        title: cleanTvTitle(cleanTitle(seasonWithSPrefix[1])),
-        year: null,
-        mediaType: "tv",
-        season,
-      };
+    if (!isNaN(season)) return buildTvParsedName(seasonWithSPrefix[1], season);
   }
 
   // Movie — year in square brackets: "Despicable Me 4 [2024]"
@@ -136,6 +107,21 @@ function parseTorrentName(filename: string): ParsedName {
   return { title: cleanTitle(s), year: null, mediaType: "movie", season: null };
 }
 
+function buildTvParsedName(rawTitle: string, season: number): ParsedName {
+  const normalized = cleanTitle(rawTitle);
+
+  const parenYear = normalized.match(/\(((?:19|20)\d{2})\)\s*$/);
+  const bareYear = normalized.match(/\s+((?:19|20)\d{2})\s*$/);
+  const year = parenYear?.[1] ?? bareYear?.[1] ?? null;
+
+  return {
+    title: cleanTvTitle(normalized),
+    year,
+    mediaType: "tv",
+    season,
+  };
+}
+
 // Strip quality/codec/source tags that appear after the meaningful title part
 function cleanTitle(s: string): string {
   return s
@@ -153,6 +139,7 @@ function cleanTitle(s: string): string {
 function cleanTvTitle(s: string): string {
   return s
     .replace(/\s+\((?:19|20)\d{2}\)/g, "") // strip (year) anywhere in title
+    .replace(/\b[Ss]eason\s+\d{1,2}\b\s*$/g, "") // strip trailing "Season 1"
     .replace(/\b[Ss]eason\b\s*$/g, "") // strip trailing "Season" BEFORE year strip
     .replace(/\s+(?:19|20)\d{2}$/, "") // then strip trailing bare year
     .replace(/[^\x00-\x7F]+/g, "") // strip non-ASCII (e.g. Chinese chars)
@@ -188,6 +175,8 @@ async function searchTMDB(
 
     // Remove apostrophes for alternate matching
     queries.add(base.replace(/[’']/g, ""));
+
+    if (/^ncis(?:\s+\d{4})?$/i.test(base)) queries.add("NCIS");
 
     return [...queries].filter(Boolean);
   };
