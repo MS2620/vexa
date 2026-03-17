@@ -244,6 +244,87 @@ export default function Settings() {
                 : "Cannot reach Plex. Check your URL and token below."}
           </p>
         </div>
+
+        {/* Mount Health Card */}
+        <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20 md:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Mount Health</h3>
+            {statusLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+            ) : serviceStatus?.mounts?.debrid_mount?.readable &&
+              serviceStatus?.mounts?.plex_symlink_root?.writable ? (
+              <span className="text-xs px-2 py-1 rounded-full font-bold border bg-green-600/20 text-green-400 border-green-600/30">
+                ● Healthy
+              </span>
+            ) : (
+              <span className="text-xs px-2 py-1 rounded-full font-bold border bg-yellow-600/20 text-yellow-300 border-yellow-600/30">
+                ● Attention Needed
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-3 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-gray-300 font-medium">Debrid Mount</p>
+                <p className="text-xs text-gray-500 break-all">
+                  {serviceStatus?.mounts?.debrid_mount?.path ||
+                    "/mnt/zurg/__all__"}
+                </p>
+              </div>
+              <span
+                className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
+                  serviceStatus?.mounts?.debrid_mount?.readable
+                    ? "bg-green-600/20 text-green-400 border-green-600/30"
+                    : "bg-red-600/20 text-red-400 border-red-600/30"
+                }`}
+              >
+                {serviceStatus?.mounts?.debrid_mount?.readable
+                  ? "Readable"
+                  : "Not Readable"}
+              </span>
+            </div>
+
+            {!statusLoading &&
+              !serviceStatus?.mounts?.debrid_mount?.readable && (
+                <p className="text-xs text-yellow-300/90 wrap-break-word">
+                  {serviceStatus?.mounts?.debrid_mount?.error ||
+                    "Debrid mount is not accessible. Ensure rclone is mounted and visible to the app container."}
+                </p>
+              )}
+
+            <div className="pt-2 border-t border-white/5" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-gray-300 font-medium">Plex Symlink Root</p>
+                <p className="text-xs text-gray-500 break-all">
+                  {serviceStatus?.mounts?.plex_symlink_root?.path ||
+                    "/mnt/plex_symlinks"}
+                </p>
+              </div>
+              <span
+                className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
+                  serviceStatus?.mounts?.plex_symlink_root?.writable
+                    ? "bg-green-600/20 text-green-400 border-green-600/30"
+                    : "bg-red-600/20 text-red-400 border-red-600/30"
+                }`}
+              >
+                {serviceStatus?.mounts?.plex_symlink_root?.writable
+                  ? "Writable"
+                  : "Not Writable"}
+              </span>
+            </div>
+
+            {!statusLoading &&
+              !serviceStatus?.mounts?.plex_symlink_root?.writable && (
+                <p className="text-xs text-yellow-300/90 wrap-break-word">
+                  {serviceStatus?.mounts?.plex_symlink_root?.error ||
+                    "Symlink root is not writable. Match APP_UID/APP_GID with host ownership and chmod/chown the directory."}
+                </p>
+              )}
+          </div>
+        </div>
       </div>
 
       {/* ── CONFIGURATION FORM ── */}

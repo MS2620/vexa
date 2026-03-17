@@ -1,7 +1,60 @@
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import { access } from "fs/promises";
+import { constants as fsConstants } from "fs";
+
+let hasCheckedSymlinkRootPermissions = false;
+let hasCheckedDebridMountPermissions = false;
+
+async function checkSymlinkRootPermissionsOnce() {
+  if (hasCheckedSymlinkRootPermissions) return;
+  hasCheckedSymlinkRootPermissions = true;
+
+  const symlinkRoot = process.env.PLEX_SYMLINK_ROOT || "/mnt/plex_symlinks";
+
+  try {
+    await access(symlinkRoot, fsConstants.W_OK);
+  } catch (error) {
+    const uid =
+      typeof process.getuid === "function" ? String(process.getuid()) : "?";
+    const gid =
+      typeof process.getgid === "function" ? String(process.getgid()) : "?";
+    const message =
+      error instanceof Error ? error.message : "Unknown permission error";
+
+    console.warn(
+      `[startup] PLEX_SYMLINK_ROOT is not writable: ${symlinkRoot} (uid:gid ${uid}:${gid}). ${message}. ` +
+        "Set APP_UID/APP_GID to match host ownership and ensure the directory is writable.",
+    );
+  }
+}
+
+async function checkDebridMountPermissionsOnce() {
+  if (hasCheckedDebridMountPermissions) return;
+  hasCheckedDebridMountPermissions = true;
+
+  const debridMount = process.env.DEBRID_MOUNT || "/mnt/zurg/__all__";
+
+  try {
+    await access(debridMount, fsConstants.R_OK);
+  } catch (error) {
+    const uid =
+      typeof process.getuid === "function" ? String(process.getuid()) : "?";
+    const gid =
+      typeof process.getgid === "function" ? String(process.getgid()) : "?";
+    const message =
+      error instanceof Error ? error.message : "Unknown permission error";
+
+    console.warn(
+      `[startup] DEBRID_MOUNT is not readable: ${debridMount} (uid:gid ${uid}:${gid}). ${message}. ` +
+        "Ensure rclone is mounted and this path is accessible in the app container.",
+    );
+  }
+}
 
 export async function openDb() {
+  await checkSymlinkRootPermissionsOnce();
+  await checkDebridMountPermissionsOnce();
   return open({
     filename: process.env.DB_PATH || "./database.sqlite",
     driver: sqlite3.Database,
