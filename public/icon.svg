@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="vexaGradient" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="48" height="48" rx="12" fill="url(#vexaGradient)"/>
+  <path d="M32 47.5L15 18H24L32 35L40 18H49L32 47.5Z" fill="white"/>
+  <path d="M32 47.5L24 30H15L32 52L49 30H40L32 47.5Z" fill="white" opacity="0.4"/>
+</svg>
