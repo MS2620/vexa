@@ -91,7 +91,7 @@ export async function initDb() {
       message TEXT NOT NULL,
       context TEXT,
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`
+    )`,
   ];
 
   for (const migration of migrations) {

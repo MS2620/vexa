@@ -10,7 +10,9 @@ export async function GET() {
     }
 
     const db = await openDb();
-    const logs = await db.all("SELECT * FROM logs ORDER BY timestamp DESC LIMIT 500");
+    const logs = await db.all(
+      "SELECT * FROM logs ORDER BY timestamp DESC LIMIT 500",
+    );
 
     return NextResponse.json({ logs });
   } catch (error: any) {

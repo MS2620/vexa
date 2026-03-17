@@ -1,10 +1,17 @@
 "use client";
 import "./globals.css";
-import Navigation from "./Navigation";
+import Navigation from "./components/Navigation";
 import { Search, Bell } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Toaster } from "react-hot-toast";
+
+type PendingRequestNotification = {
+  id: string | number;
+  title: string;
+  requested_by?: string;
+  requested_at?: string;
+};
 
 export default function RootLayout({
   children,
@@ -15,10 +22,83 @@ export default function RootLayout({
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [scrolled, setScrolled] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [pendingNotifications, setPendingNotifications] = useState<
+    PendingRequestNotification[]
+  >([]);
+  const notificationRef = useRef<HTMLDivElement | null>(null);
+
+  const getPageTitle = (path: string) => {
+    if (path.startsWith("/media/")) return "Media Details";
+
+    const titles: Record<string, string> = {
+      "/": "Discover",
+      "/movies": "Movies",
+      "/series": "Series",
+      "/calendar": "Calendar",
+      "/requests": "Requests",
+      "/search": "Search",
+      "/settings": "Settings",
+      "/users": "Users",
+      "/logs": "Logs",
+      "/blocklist": "Blocklist",
+      "/login": "Login",
+      "/setup": "Setup",
+      "/api": "API",
+    };
+
+    return titles[path] ?? "Control Panel";
+  };
+
+  useEffect(() => {
+    document.title = `${getPageTitle(pathname)} • MediaDock`;
+  }, [pathname]);
+
+  const fetchNotifications = async () => {
+    try {
+      setNotificationsLoading(true);
+      const res = await fetch("/api/dashboard/requests?status=pending", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      setPendingNotifications(data.results || []);
+    } catch (error) {
+      console.error("Failed to fetch notifications:", error);
+      setPendingNotifications([]);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+
+    const intervalId = setInterval(() => {
+      fetchNotifications();
+    }, 60000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        notificationRef.current &&
+        !notificationRef.current.contains(event.target as Node)
+      ) {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // When navigating away from /search, clear the search bar
   useEffect(() => {
     if (!pathname.startsWith("/search")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchQuery("");
     }
   }, [pathname]);
@@ -84,11 +164,69 @@ export default function RootLayout({
               />
             </div>
 
-            <div className="flex items-center gap-4 ml-6">
-              <button className="relative p-2.5 rounded-full hover:bg-white/5 transition-colors text-gray-400 hover:text-white border border-transparent hover:border-white/5">
+            <div className="flex items-center gap-4 ml-6" ref={notificationRef}>
+              <button
+                onClick={() => setIsNotificationsOpen((previous) => !previous)}
+                className="relative p-2.5 rounded-full hover:bg-white/5 transition-colors text-gray-400 hover:text-white border border-transparent hover:border-white/5"
+              >
                 <Bell className="w-5 h-5" />
-                <span className="absolute top-2.5 right-3 w-2 h-2 rounded-full bg-indigo-500 border border-[#0f111a]"></span>
+                {pendingNotifications.length > 0 && (
+                  <span className="absolute top-2.5 right-3 w-2 h-2 rounded-full bg-indigo-500 border border-[#0f111a]"></span>
+                )}
               </button>
+
+              {isNotificationsOpen && (
+                <div className="absolute right-0 top-full mt-2 w-96 max-w-[90vw] bg-[#161824] border border-white/10 rounded-xl shadow-2xl shadow-black/40 overflow-hidden z-50">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+                    <h3 className="text-sm font-semibold text-white">
+                      Notifications
+                    </h3>
+                    <span className="text-xs text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+                      {pendingNotifications.length} pending
+                    </span>
+                  </div>
+
+                  <div className="max-h-96 overflow-y-auto">
+                    {notificationsLoading ? (
+                      <p className="text-sm text-gray-400 px-4 py-4">
+                        Loading notifications...
+                      </p>
+                    ) : pendingNotifications.length === 0 ? (
+                      <p className="text-sm text-gray-400 px-4 py-4">
+                        No pending requests right now.
+                      </p>
+                    ) : (
+                      pendingNotifications.slice(0, 8).map((notification) => (
+                        <button
+                          key={notification.id}
+                          onClick={() => {
+                            setIsNotificationsOpen(false);
+                            router.push("/requests");
+                          }}
+                          className="w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors"
+                        >
+                          <p className="text-sm font-medium text-white truncate">
+                            {notification.title}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Requested by {notification.requested_by || "Unknown"}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setIsNotificationsOpen(false);
+                      router.push("/requests");
+                    }}
+                    className="w-full py-2.5 text-sm text-indigo-300 hover:text-white hover:bg-indigo-500/10 transition-colors border-t border-white/10"
+                  >
+                    View all requests
+                  </button>
+                </div>
+              )}
             </div>
           </header>
 

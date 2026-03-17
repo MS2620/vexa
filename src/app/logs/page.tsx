@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Terminal, RefreshCw, AlertCircle, CheckCircle, Info } from "lucide-react";
+import {
+  Terminal,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
+  Info,
+} from "lucide-react";
 
 export default function LogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -24,7 +30,7 @@ export default function LogsPage() {
 
   useEffect(() => {
     fetchLogs();
-    
+
     // Auto refresh every 5 seconds
     const interval = setInterval(fetchLogs, 5000);
     return () => clearInterval(interval);
@@ -63,14 +69,16 @@ export default function LogsPage() {
           <h1 className="text-3xl font-bold text-white mb-1 flex items-center gap-3">
             <Terminal className="w-8 h-8 text-indigo-500" /> System Logs
           </h1>
-          <p className="text-gray-400 text-sm">Monitor live background processes and request stages</p>
+          <p className="text-gray-400 text-sm">
+            Monitor live background processes and request stages
+          </p>
         </div>
         <button
           onClick={fetchLogs}
           disabled={loading}
           className="flex items-center justify-center gap-2 bg-[#161824] hover:bg-white/5 border border-white/5 px-4 py-2 rounded-lg transition-colors"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </button>
       </div>
@@ -81,24 +89,24 @@ export default function LogsPage() {
         ) : (
           <div className="flex flex-col gap-2">
             {logs.map((log) => (
-              <div 
-                key={log.id} 
+              <div
+                key={log.id}
                 className={`flex flex-col p-3 rounded-r-lg ${getLevelStyle(log.level)} transition-colors hover:bg-white/5`}
               >
-                 <div className="flex items-start md:items-center gap-3">
-                    {getLevelIcon(log.level)}
-                    <span className="text-gray-500 text-xs shrink-0 whitespace-nowrap">
-                      {new Date(log.timestamp).toLocaleString()}
-                    </span>
-                    <span className="text-gray-200 font-medium ml-2">
-                      {log.message}
-                    </span>
-                 </div>
-                 {log.context && (
-                    <div className="mt-2 ml-7 pl-6 border-l border-white/10 text-xs text-gray-400">
-                      {log.context}
-                    </div>
-                 )}
+                <div className="flex items-start md:items-center gap-3">
+                  {getLevelIcon(log.level)}
+                  <span className="text-gray-500 text-xs shrink-0 whitespace-nowrap">
+                    {new Date(log.timestamp).toLocaleString()}
+                  </span>
+                  <span className="text-gray-200 font-medium ml-2">
+                    {log.message}
+                  </span>
+                </div>
+                {log.context && (
+                  <div className="mt-2 ml-7 pl-6 border-l border-white/10 text-xs text-gray-400">
+                    {log.context}
+                  </div>
+                )}
               </div>
             ))}
           </div>

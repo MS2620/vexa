@@ -113,7 +113,9 @@ export async function createSymlinks({
         } catch {
           await fs.unlink(targetPath);
           await fs.symlink(sourcePath, targetPath);
-          console.log(`[symlinks] replaced dangling: ${targetPath} → ${sourcePath}`);
+          console.log(
+            `[symlinks] replaced dangling: ${targetPath} → ${sourcePath}`,
+          );
           createdPaths.push(targetPath);
         }
       } else {

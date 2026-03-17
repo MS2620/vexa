@@ -474,7 +474,7 @@ export default function Settings() {
               </label>
               <input
                 type="email"
-                placeholder="seerr@yourdomain.com"
+                placeholder="mediadock@yourdomain.com"
                 value={formData.smtp_from || ""}
                 onChange={(e) =>
                   setFormData({ ...formData, smtp_from: e.target.value })

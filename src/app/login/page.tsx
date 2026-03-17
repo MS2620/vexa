@@ -30,7 +30,7 @@ export default function Login() {
       <div className="bg-gray-900 border border-gray-800 p-8 rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex flex-col items-center mb-8">
           <Film className="w-12 h-12 text-blue-500 mb-4" />
-          <h1 className="text-2xl font-bold text-white">Login to Media Server</h1>
+          <h1 className="text-2xl font-bold text-white">Sign in to MediaDock</h1>
         </div>
         
         <form onSubmit={handleLogin} className="space-y-4">

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Loader2, Filter, SortDesc, ChevronDown } from "lucide-react";
-import MediaCard from "../MediaCard";
+import MediaCard from "../components/MediaCard";
 
 export default function SeriesPage() {
   const [series, setSeries] = useState<any[]>([]);

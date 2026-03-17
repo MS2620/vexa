@@ -53,13 +53,13 @@ export default function MediaCard({
     return (
       <div
         onClick={handleClick}
-        className="group min-w-[280px] sm:min-w-[300px] md:min-w-[340px] bg-[#161824]/60 backdrop-blur-md border border-white/5 rounded-2xl p-4 flex gap-4 shrink-0 hover:bg-white/5 hover:border-white/10 hover:shadow-xl hover:shadow-indigo-500/5 transition-all cursor-pointer snap-start"
+        className="min-w-[280px] sm:min-w-[300px] md:min-w-[340px] bg-[#161824]/60 backdrop-blur-md border border-white/5 rounded-2xl p-4 flex gap-4 shrink-0 hover:bg-white/5 hover:border-white/10 hover:shadow-xl hover:shadow-indigo-500/5 transition-transform duration-300 hover:scale-105 hover:-translate-y-1 cursor-pointer snap-start z-10 hover:z-20"
       >
         <div className="flex-1 flex flex-col relative z-10">
           <span className="text-xs font-medium text-indigo-300 mb-1 flex items-center gap-1.5">
             <Calendar className="w-3 h-3" /> {year}
           </span>
-          <h3 className="font-bold text-white leading-tight mb-1 text-base group-hover:text-indigo-200 transition-colors line-clamp-2">
+          <h3 className="font-bold text-white leading-tight mb-1 text-base hover:text-indigo-200 transition-colors line-clamp-2">
             {title}
           </h3>
 
@@ -100,12 +100,9 @@ export default function MediaCard({
           </div>
         </div>
 
-        <div className="w-24 aspect-[2/3] bg-gray-800 rounded-xl overflow-hidden shrink-0 relative shadow-lg group-hover:shadow-indigo-500/20 transition-all">
+        <div className="w-24 aspect-[2/3] bg-gray-800 rounded-xl overflow-hidden shrink-0 relative shadow-lg hover:shadow-indigo-500/20 transition-all">
           {imageUrl ? (
-            <img
-              src={imageUrl}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-            />
+            <img src={imageUrl} className="w-full h-full object-cover" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
               <Play className="w-8 h-8 text-gray-700" />
@@ -120,9 +117,9 @@ export default function MediaCard({
   return (
     <div
       onClick={handleClick}
-      className={`group cursor-pointer relative snap-start ${className || "w-[140px] sm:w-[155px] md:w-[180px] shrink-0"}`}
+      className={`relative cursor-pointer snap-start transition-transform duration-300 hover:scale-105 hover:-translate-y-1 z-10 hover:z-20 ${className || "w-[140px] sm:w-[155px] md:w-[180px] shrink-0"}`}
     >
-      <div className="relative w-full aspect-[2/3] bg-[#161824] rounded-2xl overflow-hidden shadow-lg shadow-black/20 group-hover:shadow-indigo-500/20 transition-all duration-300 ring-1 ring-white/5 group-hover:ring-indigo-500/50">
+      <div className="relative w-full aspect-[2/3] bg-[#161824] rounded-2xl overflow-hidden shadow-lg shadow-black/20 hover:shadow-indigo-500/20 transition-all duration-300 ring-1 ring-white/5 hover:ring-indigo-500/50">
         {/* Type Badge */}
         {(media.media_type || media.first_air_date) && (
           <div className="absolute top-2.5 left-2.5 bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-0.5 rounded-md shadow-sm z-20 uppercase tracking-wider">
@@ -143,7 +140,7 @@ export default function MediaCard({
           <img
             src={imageUrl}
             alt={title}
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            className="absolute inset-0 w-full h-full object-cover"
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 text-center p-2 text-sm bg-gray-900">
@@ -151,21 +148,6 @@ export default function MediaCard({
             <span className="opacity-50">{title}</span>
           </div>
         )}
-
-        {/* Hover Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
-          <div className="transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-            <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center mx-auto mb-3 text-white ring-1 ring-white/20 hover:bg-white/20 hover:scale-110 transition-all">
-              <Play className="w-4 h-4 fill-current ml-0.5" />
-            </div>
-            <p className="text-white text-sm font-bold truncate text-center">
-              {title}
-            </p>
-            <p className="text-gray-300 text-xs text-center font-medium mt-0.5">
-              {year}
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );
