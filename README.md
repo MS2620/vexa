@@ -1,149 +1,62 @@
 # Vexa
 
-Vexa is a self-hosted media request dashboard for homelabs. It combines:
+rclone:
+image: rclone/rclone:latest
+container_name: rclone
+restart: unless-stopped
+cap_add: - SYS_ADMIN
+security_opt: - apparmor:unconfined
+devices: - /dev/fuse:/dev/fuse:rwm
+volumes: - ./config/rclone.conf:/config/rclone/rclone.conf:ro - type: bind
+source: /mnt/zurg
+target: /mnt/zurg
+bind:
+propagation: shared
+command: >
+mount zurg: /mnt/zurg
+--allow-non-empty
+--allow-other
+--dir-cache-time 10s
+--vfs-cache-mode off
+--no-checksum
+depends_on: - zurg
 
-- Real-Debrid for source/search
-- Zurg + rclone mount for local filesystem access
-- Plex for library playback and availability checks
-- A Next.js app for requests, approval flow, settings, users, and logs
-
-## What You Get
-
-- Request movies/series and track status
-- Approve/deny requests
-- Check availability in Plex
-- Optional symlink sync flow for Plex-friendly library paths
-- Admin/user auth with session cookies
-- Setup wizard on first run
-
----
-
-## Prerequisites
-
-### Required Accounts / API
-
-- TMDB API key
-- Real-Debrid API token
-- Plex server URL + Plex token
-
-### Required Software
-
-- Docker + Docker Compose (recommended deployment)
-- OR Node.js 20+ and npm (local dev mode)
-
----
-
-## Quick Start (Docker, Recommended)
-
-### Option A: No clone (copy/paste deploy)
-
-This flow deploys Vexa without cloning and without curl.
-
-#### 1) Create a stack directory
-
-```bash
-mkdir -p ~/vexa-stack/config
-cd ~/vexa-stack
-```
-
-#### 2) Create required host directories
-
-```bash
-sudo mkdir -p /mnt/zurg /mnt/plex_symlinks
-sudo chmod 755 /mnt/zurg /mnt/plex_symlinks
-```
-
-#### 3) Create `docker-compose.yml`
-
-Create `~/vexa-stack/docker-compose.yml` with this exact content:
-
-```yaml
-services:
-  zurg:
-    image: ghcr.io/debridmediamanager/zurg-testing:latest
-    container_name: zurg
-    restart: unless-stopped
-    volumes:
-      - ./config/zurg.yml:/app/config.yml:ro
-      - zurg-data:/app/data
-
-  rclone:
-    image: rclone/rclone:latest
-    container_name: rclone
-    restart: unless-stopped
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    devices:
-      - /dev/fuse:/dev/fuse:rwm
-    volumes:
-      - ./config/rclone.conf:/config/rclone/rclone.conf:ro
-      - type: bind
-        source: /mnt/zurg
-        target: /mnt/zurg
-        bind:
-          propagation: shared
-    command: >
-      mount zurg: /mnt/zurg
-      --allow-non-empty
-      --allow-other
-      --dir-cache-time 10s
-      --vfs-cache-mode off
-      --no-checksum
-    depends_on:
-      - zurg
-
-  app:
-    image: ${VEXA_IMAGE:-ghcr.io/ms2620/vexa:latest}
+app:
+image: ${VEXA_IMAGE:-ghcr.io/ms2620/vexa:latest}
     pull_policy: always
     container_name: vexa
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET env var is required}
-      - DB_PATH=/app/data/database.sqlite
-      - DEBRID_MOUNT=/mnt/zurg/__all__
-      - PLEX_SYMLINK_ROOT=/mnt/plex_symlinks
-    volumes:
-      - vexa-data:/app/data
-      - type: bind
-        source: /mnt/zurg
-        target: /mnt/zurg
-        bind:
-          propagation: slave
-      - /mnt/plex_symlinks:/mnt/plex_symlinks
-    depends_on:
-      - rclone
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET env var is required} - DB_PATH=/app/data/database.sqlite - DEBRID_MOUNT=/mnt/zurg/**all** - PLEX_SYMLINK_ROOT=/mnt/plex_symlinks
+volumes: - vexa-data:/app/data - type: bind
+source: /mnt/zurg
+target: /mnt/zurg
+bind:
+propagation: slave - /mnt/plex_symlinks:/mnt/plex_symlinks
+depends_on: - rclone
 
-  plex:
-    image: linuxserver/plex:latest
-    container_name: plex
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - VERSION=docker
-      - PLEX_CLAIM=${PLEX_CLAIM:-}
-    volumes:
-      - plex-config:/config
-      - /mnt/plex_symlinks:/mnt/plex_symlinks:ro
-      - type: bind
-        source: /mnt/zurg
-        target: /mnt/zurg
-        bind:
-          propagation: shared
-    depends_on:
-      - rclone
+plex:
+image: linuxserver/plex:latest
+container_name: plex
+restart: unless-stopped
+network_mode: host
+environment: - PUID=1000 - PGID=1000 - VERSION=docker - PLEX_CLAIM=${PLEX_CLAIM:-}
+volumes: - plex-config:/config - /mnt/plex_symlinks:/mnt/plex_symlinks:ro - type: bind
+source: /mnt/zurg
+target: /mnt/zurg
+bind:
+propagation: shared
+depends_on: - rclone
 
 volumes:
-  vexa-data:
-    name: debrid-data
-  zurg-data:
-  plex-config:
-```
+vexa-data:
+name: debrid-data
+zurg-data:
+plex-config:
+
+````
 
 #### 4) Create `config/rclone.conf`
 
@@ -154,7 +67,7 @@ Create `~/vexa-stack/config/rclone.conf`:
 type = webdav
 url = http://zurg:9999/dav
 vendor = other
-```
+````
 
 #### 5) Create `config/zurg.yml`
 
