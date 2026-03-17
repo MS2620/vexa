@@ -13,6 +13,7 @@ type MediaHeroProps = {
   overallStatus: string;
   detail: MediaDetail;
   type: string;
+  plexUrl?: string;
   genres?: string[];
   onRequestClick: () => void;
 };
@@ -25,10 +26,21 @@ export default function MediaHero({
   overallStatus,
   detail,
   type,
+  plexUrl,
   genres,
   onRequestClick,
 }: MediaHeroProps) {
   const voteAverage = detail.vote_average ?? 0;
+  const normalizedPlexUrl = plexUrl?.trim()
+    ? /^https?:\/\//i.test(plexUrl.trim())
+      ? plexUrl.trim()
+      : `http://${plexUrl.trim()}`
+    : "";
+
+  const handlePlayOnPlex = () => {
+    if (!normalizedPlexUrl) return;
+    window.open(normalizedPlexUrl, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <div className="relative -mt-4 lg:-mt-8 -mx-4 md:-mx-8 mb-8 lg:mb-16">
@@ -122,13 +134,17 @@ export default function MediaHero({
             <div className="flex items-center gap-3 flex-wrap mt-2">
               {(overallStatus === "available" ||
                 overallStatus === "partial") && (
-                <button className="flex items-center gap-2 bg-linear-to-r from-[#e5a00d] to-[#f5b324] hover:from-[#d4940c] hover:to-[#e5a00d] text-black font-extrabold px-6 py-3 rounded-xl transition-colors shadow-lg shadow-yellow-900/20">
+                <button
+                  onClick={handlePlayOnPlex}
+                  disabled={!normalizedPlexUrl}
+                  className="flex items-center gap-2 bg-linear-to-r from-[#e5a00d] to-[#f5b324] hover:from-[#d4940c] hover:to-[#e5a00d] disabled:from-gray-500 disabled:to-gray-500 disabled:text-gray-300 disabled:cursor-not-allowed text-black font-extrabold px-6 py-3 rounded-xl transition-colors shadow-lg shadow-yellow-900/20 cursor-pointer"
+                >
                   <Play className="w-5 h-5 fill-current" /> Play on Plex
                 </button>
               )}
               <button
                 onClick={onRequestClick}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 rounded-xl transition-colors shadow-lg shadow-indigo-900/40 border border-indigo-500/50"
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 rounded-xl transition-colors shadow-lg shadow-indigo-900/40 border border-indigo-500/50 cursor-pointer"
               >
                 <Play className="w-5 h-5 fill-white" />{" "}
                 {type === "movie" ? "Request Movie" : "Request Episode"}

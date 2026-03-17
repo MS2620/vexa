@@ -1,6 +1,7 @@
 "use client";
 
-import { Play, Calendar, Star, Check, Clock, Film } from "lucide-react";
+import { Play, Calendar, Check, Film } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 interface MediaCardProps {
@@ -53,7 +54,7 @@ export default function MediaCard({
     return (
       <div
         onClick={handleClick}
-        className="min-w-[280px] sm:min-w-[300px] md:min-w-[340px] bg-[#161824]/60 backdrop-blur-md border border-white/5 rounded-2xl p-4 flex gap-4 shrink-0 hover:bg-white/5 hover:border-white/10 hover:shadow-xl hover:shadow-indigo-500/5 transition-transform duration-300 hover:scale-105 hover:-translate-y-1 cursor-pointer snap-start z-10 hover:z-20"
+        className="min-w[280px sm:min-w-300px md:min-w-340px bg-[#161824]/60 backdrop-blur-md border border-white/5 rounded-2xl p-4 flex gap-4 shrink-0 hover:bg-white/5 hover:border-white/10 hover:shadow-xl hover:shadow-indigo-500/5 transition-transform duration-300 hover:scale-105 hover:-translate-y-1 cursor-pointer snap-start z-10 hover:z-20"
       >
         <div className="flex-1 flex flex-col relative z-10">
           <span className="text-xs font-medium text-indigo-300 mb-1 flex items-center gap-1.5">
@@ -71,7 +72,7 @@ export default function MediaCard({
 
           {user && (
             <div className="flex items-center gap-2 mb-3 mt-1">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 text-[9px] flex items-center justify-center font-bold text-white ring-1 ring-white/10">
+              <div className="w-5 h-5 rounded-full bg-linear-to-br from-pink-500 to-rose-600 text-[9px] flex items-center justify-center font-bold text-white ring-1 ring-white/10">
                 {user.charAt(0).toUpperCase()}
               </div>
               <span className="text-xs text-gray-400 font-medium">{user}</span>
@@ -100,9 +101,15 @@ export default function MediaCard({
           </div>
         </div>
 
-        <div className="w-24 aspect-[2/3] bg-gray-800 rounded-xl overflow-hidden shrink-0 relative shadow-lg hover:shadow-indigo-500/20 transition-all">
+        <div className="w-24 aspect-2/3 bg-gray-800 rounded-xl overflow-hidden shrink-0 relative shadow-lg hover:shadow-indigo-500/20 transition-all">
           {imageUrl ? (
-            <img src={imageUrl} className="w-full h-full object-cover" />
+            <Image
+              src={imageUrl}
+              className="w-full h-full object-cover"
+              alt="Image"
+              width={300}
+              height={450}
+            />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
               <Play className="w-8 h-8 text-gray-700" />
@@ -117,9 +124,9 @@ export default function MediaCard({
   return (
     <div
       onClick={handleClick}
-      className={`relative cursor-pointer snap-start transition-transform duration-300 hover:scale-105 hover:-translate-y-1 z-10 hover:z-20 ${className || "w-[140px] sm:w-[155px] md:w-[180px] shrink-0"}`}
+      className={`relative cursor-pointer snap-start transition-transform duration-300 hover:scale-105 hover:-translate-y-1 z-10 hover:z-20 ${className || "w-140px sm:w-155px md:w-180px shrink-0"}`}
     >
-      <div className="relative w-full aspect-[2/3] bg-[#161824] rounded-2xl overflow-hidden shadow-lg shadow-black/20 hover:shadow-indigo-500/20 transition-all duration-300 ring-1 ring-white/5 hover:ring-indigo-500/50">
+      <div className="relative w-full aspect-2/3 bg-[#161824] rounded-2xl overflow-hidden shadow-lg shadow-black/20 hover:shadow-indigo-500/20 transition-all duration-300 ring-1 ring-white/5 hover:ring-indigo-500/50">
         {/* Type Badge */}
         {(media.media_type || media.first_air_date) && (
           <div className="absolute top-2.5 left-2.5 bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-0.5 rounded-md shadow-sm z-20 uppercase tracking-wider">
@@ -137,10 +144,12 @@ export default function MediaCard({
         )}
 
         {imageUrl ? (
-          <img
+          <Image
             src={imageUrl}
             alt={title}
             className="absolute inset-0 w-full h-full object-cover"
+            width={400}
+            height={600}
           />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 text-center p-2 text-sm bg-gray-900">

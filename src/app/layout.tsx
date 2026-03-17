@@ -52,7 +52,7 @@ export default function RootLayout({
   };
 
   useEffect(() => {
-    document.title = `${getPageTitle(pathname)} • MediaDock`;
+    document.title = `${getPageTitle(pathname)} • Vexa`;
   }, [pathname]);
 
   const fetchNotifications = async () => {
@@ -209,7 +209,8 @@ export default function RootLayout({
                             {notification.title}
                           </p>
                           <p className="text-xs text-gray-400 mt-1">
-                            Requested by {notification.requested_by || "Unknown"}
+                            Requested by{" "}
+                            {notification.requested_by || "Unknown"}
                           </p>
                         </button>
                       ))

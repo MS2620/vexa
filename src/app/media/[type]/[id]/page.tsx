@@ -16,6 +16,7 @@ export default function MediaDetailPage() {
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [plexUrl, setPlexUrl] = useState("");
   const [expandedSeasons, setExpandedSeasons] = useState<
     Record<number, boolean>
   >({});
@@ -45,6 +46,30 @@ export default function MediaDetailPage() {
         setLoading(false);
       });
   }, [type, id]);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((settings) => setPlexUrl(settings?.plex_url || ""))
+      .catch(() => setPlexUrl(""));
+  }, []);
+
+  useEffect(() => {
+    const detail = data?.detail;
+    if (!detail) return;
+
+    const mediaTitle = detail.title || detail.name;
+    if (!mediaTitle) return;
+
+    const mediaYear = (detail.release_date || detail.first_air_date)?.substring(
+      0,
+      4,
+    );
+
+    document.title = mediaYear
+      ? `${mediaTitle} (${mediaYear}) • Vexa`
+      : `${mediaTitle} • Vexa`;
+  }, [data]);
 
   const toggleSeason = (seasonNum: number) =>
     setExpandedSeasons((prev) => ({ ...prev, [seasonNum]: !prev[seasonNum] }));
@@ -209,6 +234,7 @@ export default function MediaDetailPage() {
         overallStatus={overallStatus}
         detail={detail}
         type={type}
+        plexUrl={plexUrl}
         genres={genres}
         onRequestClick={() => openStreamModal(type === "tv" ? 1 : undefined)}
       />

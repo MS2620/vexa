@@ -20,6 +20,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import Logo from "./Logo";
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -65,12 +66,10 @@ export default function Navigation() {
       <aside className="hidden md:flex w-72 bg-[#0f111a] border-r border-white/5 flex-col h-screen fixed left-0 top-0 z-40 overflow-y-auto">
         <div className="p-6">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/10">
-              <Play className="w-5 h-5 text-white fill-current" />
-            </div>
+            <Logo />
             <div className="flex flex-col">
               <span className="text-xl font-bold tracking-tight text-white leading-none">
-                MediaDock
+                Vexa
               </span>
               <span className="text-[10px] font-medium text-indigo-400/80 tracking-widest uppercase mt-1">
                 Control Panel
@@ -145,7 +144,7 @@ export default function Navigation() {
             onClick={handleLogout}
             className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group"
           >
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-sm font-bold text-white shadow-lg shadow-pink-500/20 ring-2 ring-[#0f111a] group-hover:ring-white/10 transition-all">
+            <div className="w-9 h-9 rounded-full bg-linear-to-br from-pink-500 to-rose-600 flex items-center justify-center text-sm font-bold text-white shadow-lg shadow-pink-500/20 ring-2 ring-[#0f111a] group-hover:ring-white/10 transition-all">
               M
             </div>
             <div className="flex flex-col overflow-hidden">
@@ -164,10 +163,8 @@ export default function Navigation() {
       {/* MOBILE HEADER */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#0f111a]/80 backdrop-blur-xl border-b border-white/5 z-50 flex items-center justify-between px-4 transition-all duration-300">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <Play className="w-4 h-4 text-white fill-current" />
-          </div>
-          <span className="font-bold text-lg text-white">MediaDock</span>
+          <Logo className="w-8 h-8 rounded-lg" iconClassName="w-4 h-4" />
+          <span className="font-bold text-lg text-white">Vexa</span>
         </div>
 
         <div className="flex items-center gap-2">
