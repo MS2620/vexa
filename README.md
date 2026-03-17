@@ -1,47 +1,63 @@
-# Vexa
+<div align="center">
+  <h1>🍿 Vexa</h1>
+  <p><strong>A beautifully self-hosted media request dashboard for homelabs.</strong></p>
 
-Vexa is a self-hosted media request dashboard for homelabs.
+[![Docker Ready](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](#)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](#)
+[![Tailwind](https://img.shields.io/badge/Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)](#)
 
-- Real-Debrid integration
-- Zurg + rclone mount workflow
-- Plex availability checks and playback shortcuts
-- Request, approval, users, settings, and logs UI
+</div>
 
----
+## ✨ Features
 
-## Prerequisites
-
-### Accounts / API
-
-- TMDB API key
-- Real-Debrid API token
-- Plex URL + Plex token
-
-### Software
-
-- Docker + Docker Compose
+- 🔗 **Real-Debrid Integration** – Seamless streaming via Real-Debrid.
+- 🚀 **Zurg + rclone Workflow** – Fast mounting and symlinking directly to Plex.
+- 🎬 **Plex Integration** – Deep library sync, availability checks, and continuous playback shortcuts.
+- 👥 **Comprehensive UI** – Integrated request management, user approvals, settings, and live logs.
 
 ---
 
-## Quick Start (No Clone, No Curl)
+## 📋 Prerequisites
+
+### 🔑 Accounts / API
+
+- **TMDB API key**
+- **Real-Debrid API token**
+- **Plex URL + Plex token**
+
+### 💻 Software
+
+- **Docker + Docker Compose**
+
+### 🧩 FUSE / Mount Requirement (Important)
+
+Vexa uses `rclone mount` with FUSE (`/dev/fuse`) for the Zurg mount, so this stack requires a Linux environment with FUSE support.
+
+- **Linux (recommended):** Install FUSE (`fuse3` or distro equivalent), ensure `/dev/fuse` exists, then run this stack normally.
+- **macOS:** Run Vexa in a Linux VM or Linux host (recommended). Docker Desktop on macOS is not a reliable target for this FUSE-based mount workflow.
+- **Windows:** Run Vexa in WSL2 (Linux distro with Docker Engine) or a Linux VM/host. Native Docker Desktop on Windows is not a reliable target for `/dev/fuse` passthrough.
+
+---
+
+## 🚀 Quick Start (No Clone, No Curl)
 
 Use this flow if you want users to create files manually and run Vexa without cloning the repository.
 
-### 1) Create stack directory
+### 1) 📁 Create stack directory
 
 ```bash
 mkdir -p ~/vexa-stack/config
 cd ~/vexa-stack
 ```
 
-### 2) Create host mount paths
+### 2) 📂 Create host mount paths (Linux environment)
 
 ```bash
 sudo mkdir -p /mnt/zurg /mnt/plex_symlinks
 sudo chmod 755 /mnt/zurg /mnt/plex_symlinks
 ```
 
-### 3) Create `docker-compose.yml`
+### 3) 🐳 Create `docker-compose.yml`
 
 Create `~/vexa-stack/docker-compose.yml`:
 
@@ -133,7 +149,7 @@ volumes:
   plex-config:
 ```
 
-### 4) Create `config/rclone.conf`
+### 4) ⚙️ Create `config/rclone.conf`
 
 Create `~/vexa-stack/config/rclone.conf`:
 
@@ -144,7 +160,7 @@ url = http://zurg:9999/dav
 vendor = other
 ```
 
-### 5) Create `config/zurg.yml`
+### 5) 🛠️ Create `config/zurg.yml`
 
 Create `~/vexa-stack/config/zurg.yml`:
 
@@ -169,7 +185,7 @@ directories:
 
 Replace `YOUR_REAL_DEBRID_TOKEN_HERE` with your token from https://real-debrid.com/apitoken.
 
-### 6) Create `.env`
+### 6) 🔐 Create `.env`
 
 Create `~/vexa-stack/.env`:
 
@@ -186,21 +202,21 @@ Notes:
 - `PLEX_CLAIM` is only needed when claiming a fresh Plex container
 - Keep `VEXA_IMAGE` default unless pinning a specific tag
 
-### 7) Start Vexa
+### 7) 🏁 Start Vexa
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-### 8) Open the app
+### 8) 🌐 Open the app
 
-- App: http://localhost:3000
-- First run redirects to `/setup`
+- **App:** `http://localhost:3000`
+- First run automatically redirects to `/setup`
 
 ---
 
-## First-Run Setup Wizard
+## 🧙‍♂️ First-Run Setup Wizard
 
 At `/setup`, enter:
 
@@ -214,9 +230,9 @@ Then sign in at `/login`.
 
 ---
 
-## Updating
+## 🔄 Updating
 
-From `~/vexa-stack`:
+From your `~/vexa-stack` directory:
 
 ```bash
 docker compose pull
@@ -225,30 +241,30 @@ docker compose up -d
 
 ---
 
-## Troubleshooting
+## 🚑 Troubleshooting
 
-### Redirect loop to `/setup`
+### 🔄 Redirect loop to `/setup`
 
-- Complete setup fully
-- Ensure TMDB key was saved
+- Complete the setup wizard fully.
+- Ensure the TMDB key was properly saved.
 - Check logs: `docker compose logs -f app`
 
-### Plex unreachable
+### ❌ Plex unreachable
 
-- Verify `plex_url` includes `http://`
-- Verify Plex token
-- Ensure container can reach Plex host
+- Verify `plex_url` includes `http://` or `https://`.
+- Verify the Plex token.
+- Ensure the container can reach your Plex host.
 
-### Symlinks not created
+### 🔗 Symlinks not created
 
-- Ensure `/mnt/zurg` is mounted by rclone
-- Ensure `/mnt/plex_symlinks` is writable by app container
-- Ensure `DEBRID_MOUNT` path exists in container
+- Ensure `/mnt/zurg` is correctly mounted by rclone.
+- Ensure `/mnt/plex_symlinks` is writable by the app container.
+- Ensure the `DEBRID_MOUNT` path exists within the container.
 
 ---
 
-## Security
+## 🛡️ Security Best Practices
 
-- Do not commit `.env`
-- Use a strong `SESSION_SECRET`
-- Set `SECURE_COOKIES=true` when using HTTPS
+- 🚫 **Never** commit your `.env` file to version control.
+- 🔑 Use a strong, generated string for `SESSION_SECRET`.
+- 🔒 Set `SECURE_COOKIES=true` in `.env` if using a reverse proxy with HTTPS.
