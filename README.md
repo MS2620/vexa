@@ -89,6 +89,7 @@ Notes:
 ```env
 VEXA_IMAGE=ghcr.io/ms2620/vexa:latest
 ```
+
 - To use secure auth cookies behind HTTPS reverse proxy, also set:
 
 ```env
