@@ -1,4 +1,4 @@
-# Full stack: zurg (RD mount) + rclone (FUSE) + debrid-dashboard app + Plex
+# Full stack: zurg (RD mount) + rclone (FUSE) + vexa app + Plex
 #
 # Prerequisites on the HOST:
 #   sudo mkdir -p /mnt/zurg /mnt/plex_symlinks
@@ -8,7 +8,7 @@
 # 2. Create a .env file:
 #      SESSION_SECRET=<at_least_32_chars>
 #      PLEX_CLAIM=<from https://plex.tv/claim>  (only needed first boot)
-# 3. Run: docker compose up -d
+# 3. Run: docker compose pull && docker compose up -d
 
 services:
   zurg:
@@ -52,8 +52,9 @@ services:
       - zurg
 
   app:
-    build: .
-    container_name: debrid-dashboard
+    image: ${VEXA_IMAGE:-ghcr.io/ms2620/vexa:latest}
+    pull_policy: always
+    container_name: vexa
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -63,7 +64,7 @@ services:
       - DEBRID_MOUNT=/mnt/zurg/__all__
       - PLEX_SYMLINK_ROOT=/mnt/plex_symlinks
     volumes:
-      - debrid-data:/app/data
+      - vexa-data:/app/data
       # Inherit the rclone FUSE mount (slave: sees rclone's mounts, can't pollute host)
       - type: bind
         source: /mnt/zurg
@@ -99,6 +100,7 @@ services:
       - rclone
 
 volumes:
-  debrid-data:
+  vexa-data:
+    name: debrid-data
   zurg-data:
   plex-config:

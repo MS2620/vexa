@@ -11,7 +11,7 @@ export const sessionOptions = {
   password:
     process.env.SESSION_SECRET ||
     "complex_password_at_least_32_characters_long",
-  cookieName: "debrid_manager_session",
+  cookieName: "vexa_session",
   cookieOptions: {
     // Only enforce HTTPS cookies when explicitly opted in — homelab setups typically use HTTP
     secure: process.env.SECURE_COOKIES === "true",

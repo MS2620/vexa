@@ -1,4 +1,4 @@
-# Vexa (debrid-dashboard)
+# Vexa
 
 Vexa is a self-hosted media request dashboard for homelabs. It combines:
 
@@ -52,8 +52,8 @@ These paths are used by:
 ### 1) Clone and enter project
 
 ```bash
-git clone https://github.com/MS2620/debrid-dashboard.git
-cd debrid-dashboard
+git clone https://github.com/MS2620/vexa.git
+cd vexa
 ```
 
 ### 2) Configure Zurg
@@ -83,16 +83,23 @@ Notes:
 
 - `SESSION_SECRET` is required
 - `PLEX_CLAIM` is usually only needed on first Plex boot
+- App image defaults to `ghcr.io/ms2620/vexa:latest`
+- To pin/override image tag, add this to `.env`:
+
+```env
+VEXA_IMAGE=ghcr.io/ms2620/vexa:latest
+```
 - To use secure auth cookies behind HTTPS reverse proxy, also set:
 
 ```env
 SECURE_COOKIES=true
 ```
 
-### 4) Start stack
+### 4) Pull and start stack
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 ### 5) Open app
@@ -192,7 +199,7 @@ Open `http://localhost:3000`.
 
 ### Persistent Data
 
-- SQLite DB in Docker volume `debrid-data` mounted at `/app/data`
+- SQLite DB in Docker volume `vexa-data` mounted at `/app/data` (mapped to existing `debrid-data` volume name for compatibility)
 - Zurg data in volume `zurg-data`
 - Plex config in volume `plex-config`
 
@@ -212,7 +219,8 @@ npm run build
 npm run start
 
 # docker stack
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose logs -f app
 docker compose down
 ```
