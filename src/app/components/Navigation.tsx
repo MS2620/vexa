@@ -26,6 +26,10 @@ export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{
+    username: string;
+    role: string;
+  } | null>(null);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -37,6 +41,24 @@ export default function Navigation() {
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const response = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        setCurrentUser({
+          username: data.username || "User",
+          role: data.role || "user",
+        });
+      } catch {
+        setCurrentUser(null);
+      }
+    };
+
+    loadCurrentUser();
+  }, []);
 
   const navItems = [
     { href: "/", label: "Discover", icon: Compass },
@@ -57,6 +79,11 @@ export default function Navigation() {
     if (path === "/") return pathname === "/";
     return pathname.startsWith(path);
   };
+
+  const username = currentUser?.username || "User";
+  const role = currentUser?.role || "user";
+  const userInitial = username.charAt(0).toUpperCase();
+  const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
 
   if (pathname === "/login" || pathname === "/setup") return null;
 
@@ -145,14 +172,14 @@ export default function Navigation() {
             className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group"
           >
             <div className="w-9 h-9 rounded-full bg-linear-to-br from-pink-500 to-rose-600 flex items-center justify-center text-sm font-bold text-white shadow-lg shadow-pink-500/20 ring-2 ring-[#0f111a] group-hover:ring-white/10 transition-all">
-              M
+              {userInitial}
             </div>
             <div className="flex flex-col overflow-hidden">
               <span className="text-sm font-semibold text-white truncate">
-                Mauro
+                {username}
               </span>
               <span className="text-xs text-gray-400 truncate">
-                Administrator
+                {roleLabel}
               </span>
             </div>
             <LogOut className="w-4 h-4 text-gray-500 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />

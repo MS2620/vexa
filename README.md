@@ -268,6 +268,35 @@ docker compose up -d
 - Ensure `/mnt/plex_symlinks` is writable by the app container.
 - Ensure the `DEBRID_MOUNT` path exists within the container.
 
+### ❗ `EACCES: permission denied, mkdir '/mnt/plex_symlinks/...'`
+
+This usually means the container user does not match the host directory owner.
+
+- Set `APP_UID` and `APP_GID` in `.env` to match the owner of `/mnt/plex_symlinks`.
+- Ensure `/mnt/plex_symlinks` is owned/writable by that same UID/GID.
+
+Example fix on Linux host:
+
+```bash
+id
+# use your uid/gid values below
+sudo chown -R <uid>:<gid> /mnt/plex_symlinks
+sudo chmod 775 /mnt/plex_symlinks
+```
+
+Then set in `.env`:
+
+```env
+APP_UID=<uid>
+APP_GID=<gid>
+```
+
+Apply changes:
+
+```bash
+docker compose up -d --force-recreate app
+```
+
 ---
 
 ## 🛡️ Security Best Practices
