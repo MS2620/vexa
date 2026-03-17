@@ -34,7 +34,8 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
 # Data directory for SQLite — mount a volume here
-RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+RUN mkdir -p /app/data /app/.next/cache \
+  && chown -R nextjs:nodejs /app/data /app/.next
 ENV DB_PATH=/app/data/database.sqlite
 ENV DEBRID_MOUNT=/mnt/zurg/__all__
 ENV PLEX_SYMLINK_ROOT=/mnt/plex_symlinks
