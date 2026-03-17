@@ -31,23 +31,175 @@ Vexa is a self-hosted media request dashboard for homelabs. It combines:
 - Docker + Docker Compose (recommended deployment)
 - OR Node.js 20+ and npm (local dev mode)
 
-### Host Directories (Docker stack)
+---
 
-Create these on the host machine:
+## Quick Start (Docker, Recommended)
+
+### Option A: No clone (copy/paste deploy)
+
+This flow deploys Vexa without cloning and without curl.
+
+#### 1) Create a stack directory
+
+```bash
+mkdir -p ~/vexa-stack/config
+cd ~/vexa-stack
+```
+
+#### 2) Create required host directories
 
 ```bash
 sudo mkdir -p /mnt/zurg /mnt/plex_symlinks
 sudo chmod 755 /mnt/zurg /mnt/plex_symlinks
 ```
 
-These paths are used by:
+#### 3) Create `docker-compose.yml`
 
-- `rclone` mount target: `/mnt/zurg`
-- Plex symlink library root: `/mnt/plex_symlinks`
+Create `~/vexa-stack/docker-compose.yml` with this exact content:
 
----
+```yaml
+services:
+  zurg:
+    image: ghcr.io/debridmediamanager/zurg-testing:latest
+    container_name: zurg
+    restart: unless-stopped
+    volumes:
+      - ./config/zurg.yml:/app/config.yml:ro
+      - zurg-data:/app/data
 
-## Quick Start (Docker, Recommended)
+  rclone:
+    image: rclone/rclone:latest
+    container_name: rclone
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    volumes:
+      - ./config/rclone.conf:/config/rclone/rclone.conf:ro
+      - type: bind
+        source: /mnt/zurg
+        target: /mnt/zurg
+        bind:
+          propagation: shared
+    command: >
+      mount zurg: /mnt/zurg
+      --allow-non-empty
+      --allow-other
+      --dir-cache-time 10s
+      --vfs-cache-mode off
+      --no-checksum
+    depends_on:
+      - zurg
+
+  app:
+    image: ${VEXA_IMAGE:-ghcr.io/ms2620/vexa:latest}
+    pull_policy: always
+    container_name: vexa
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET env var is required}
+      - DB_PATH=/app/data/database.sqlite
+      - DEBRID_MOUNT=/mnt/zurg/__all__
+      - PLEX_SYMLINK_ROOT=/mnt/plex_symlinks
+    volumes:
+      - vexa-data:/app/data
+      - type: bind
+        source: /mnt/zurg
+        target: /mnt/zurg
+        bind:
+          propagation: slave
+      - /mnt/plex_symlinks:/mnt/plex_symlinks
+    depends_on:
+      - rclone
+
+  plex:
+    image: linuxserver/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM:-}
+    volumes:
+      - plex-config:/config
+      - /mnt/plex_symlinks:/mnt/plex_symlinks:ro
+      - type: bind
+        source: /mnt/zurg
+        target: /mnt/zurg
+        bind:
+          propagation: shared
+    depends_on:
+      - rclone
+
+volumes:
+  vexa-data:
+    name: debrid-data
+  zurg-data:
+  plex-config:
+```
+
+#### 4) Create `config/rclone.conf`
+
+Create `~/vexa-stack/config/rclone.conf`:
+
+```ini
+[zurg]
+type = webdav
+url = http://zurg:9999/dav
+vendor = other
+```
+
+#### 5) Create `config/zurg.yml`
+
+Create `~/vexa-stack/config/zurg.yml`:
+
+```yaml
+zurg: v1
+
+token: YOUR_REAL_DEBRID_TOKEN_HERE
+
+port: 9999
+concurrent_workers: 20
+check_for_changes_every_secs: 10
+retain_folder_name_extension: false
+retain_rd_torrent_name: true
+
+directories:
+  __all__:
+    group_order: 10
+    group: all
+    filters:
+      - regex: /.*/
+```
+
+Replace `YOUR_REAL_DEBRID_TOKEN_HERE` with your token from https://real-debrid.com/apitoken.
+
+#### 6) Create `.env`
+
+Create `~/vexa-stack/.env`:
+
+```env
+SESSION_SECRET=replace_with_a_long_random_secret_min_32_chars
+PLEX_CLAIM=
+VEXA_IMAGE=ghcr.io/ms2620/vexa:latest
+# SECURE_COOKIES=true
+```
+
+#### 7) Start stack
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### Option B: Clone repo
 
 ### 1) Clone and enter project
 
@@ -56,7 +208,14 @@ git clone https://github.com/MS2620/vexa.git
 cd vexa
 ```
 
-### 2) Configure Zurg
+### 2) Create required host directories
+
+```bash
+sudo mkdir -p /mnt/zurg /mnt/plex_symlinks
+sudo chmod 755 /mnt/zurg /mnt/plex_symlinks
+```
+
+### 3) Configure Zurg
 
 Copy example config and insert your RD token:
 
@@ -70,7 +229,7 @@ Edit `config/zurg.yml`:
 token: YOUR_REAL_DEBRID_TOKEN_HERE
 ```
 
-### 3) Create `.env`
+### 4) Create `.env`
 
 Create `.env` in project root:
 
@@ -96,7 +255,7 @@ VEXA_IMAGE=ghcr.io/ms2620/vexa:latest
 SECURE_COOKIES=true
 ```
 
-### 4) Pull and start stack
+### 5) Pull and start stack
 
 ```bash
 docker compose pull
