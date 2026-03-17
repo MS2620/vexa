@@ -98,7 +98,6 @@ export default function RootLayout({
   // When navigating away from /search, clear the search bar
   useEffect(() => {
     if (!pathname.startsWith("/search")) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchQuery("");
     }
   }, [pathname]);
@@ -125,6 +124,11 @@ export default function RootLayout({
   if (pathname === "/login" || pathname === "/setup") {
     return (
       <html lang="en">
+        <head>
+          <link rel="icon" href="/favicon.ico" sizes="any" />
+          <link rel="shortcut icon" href="/favicon.ico" />
+          <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        </head>
         <body className="bg-[#0f111a] text-white font-sans">
           {children}
           <Toaster
@@ -144,6 +148,11 @@ export default function RootLayout({
 
   return (
     <html lang="en">
+      <head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      </head>
       <body className="bg-[#0f111a] text-white font-sans min-h-screen">
         <Navigation />
 
