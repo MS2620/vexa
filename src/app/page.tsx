@@ -26,6 +26,7 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 const INSTALL_PROMPT_SNOOZE_MS = 24 * 60 * 60 * 1000;
+const NOTIFICATION_PROMPT_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
 function isIosDevice() {
   if (typeof window === "undefined") return false;
@@ -127,6 +128,14 @@ export default function Dashboard() {
       return Date.now() - dismissedAt < INSTALL_PROMPT_SNOOZE_MS;
     };
 
+    const isNotificationPromptSnoozed = () => {
+      const dismissedAt = Number(
+        localStorage.getItem("vexa-notification-dismissed-at") || "0",
+      );
+      if (!dismissedAt) return false;
+      return Date.now() - dismissedAt < NOTIFICATION_PROMPT_SNOOZE_MS;
+    };
+
     const canUsePush = () => {
       if (!window.isSecureContext) return false;
       if (!("Notification" in window)) return false;
@@ -140,7 +149,7 @@ export default function Dashboard() {
     const shouldPromptNotifications = () => {
       if (!canUsePush()) return false;
       if (Notification.permission !== "default") return false;
-      return localStorage.getItem("vexa-notification-dismissed") !== "1";
+      return !isNotificationPromptSnoozed();
     };
 
     const registerServiceWorker = async () => {
@@ -181,7 +190,7 @@ export default function Dashboard() {
     if (onIos && !standalone && !isIosInstallPromptSnoozed()) {
       setShowIosInstallPrompt(true);
       setShowNotificationPrompt(false);
-    } else if (!standalone) {
+    } else {
       if (shouldPromptNotifications()) {
         setShowNotificationPrompt(true);
       }
@@ -202,10 +211,17 @@ export default function Dashboard() {
     setDeferredInstallPrompt(null);
     setShowInstallPrompt(false);
 
+    const notificationDismissedAt = Number(
+      localStorage.getItem("vexa-notification-dismissed-at") || "0",
+    );
+    const notificationPromptSnoozed =
+      notificationDismissedAt > 0 &&
+      Date.now() - notificationDismissedAt < NOTIFICATION_PROMPT_SNOOZE_MS;
+
     if (
       "Notification" in window &&
       Notification.permission === "default" &&
-      localStorage.getItem("vexa-notification-dismissed") !== "1"
+      !notificationPromptSnoozed
     ) {
       setShowNotificationPrompt(true);
     }
@@ -311,7 +327,17 @@ export default function Dashboard() {
                   if (
                     "Notification" in window &&
                     Notification.permission === "default" &&
-                    localStorage.getItem("vexa-notification-dismissed") !== "1"
+                    !(() => {
+                      const dismissedAt = Number(
+                        localStorage.getItem(
+                          "vexa-notification-dismissed-at",
+                        ) || "0",
+                      );
+                      return (
+                        dismissedAt > 0 &&
+                        Date.now() - dismissedAt < NOTIFICATION_PROMPT_SNOOZE_MS
+                      );
+                    })()
                   ) {
                     setShowNotificationPrompt(true);
                   }
@@ -377,7 +403,10 @@ export default function Dashboard() {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    localStorage.setItem("vexa-notification-dismissed", "1");
+                    localStorage.setItem(
+                      "vexa-notification-dismissed-at",
+                      String(Date.now()),
+                    );
                     setShowNotificationPrompt(false);
                   }}
                   className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
