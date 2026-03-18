@@ -40,9 +40,7 @@ export default function LogsPage() {
   }, []);
 
   const clearLogs = async () => {
-    const confirmed = window.confirm(
-      "Clear all logs? This cannot be undone.",
-    );
+    const confirmed = window.confirm("Clear all logs? This cannot be undone.");
     if (!confirmed) return;
 
     setClearing(true);
