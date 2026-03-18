@@ -6,6 +6,15 @@ import { openDb, initDb } from "../lib/db";
 import { ensureVapidKeys, getVapidSubject } from "../lib/push-config";
 import { getSession } from "../lib/session";
 
+type SerializablePushSubscription = {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys?: {
+    p256dh?: string;
+    auth?: string;
+  };
+};
+
 let isWebPushConfigured = false;
 
 async function ensureWebPushConfigured() {
@@ -26,7 +35,7 @@ async function ensureWebPushConfigured() {
   isWebPushConfigured = true;
 }
 
-export async function subscribeUser(sub: WebPushSubscription) {
+export async function subscribeUser(sub: SerializablePushSubscription) {
   const session = await getSession();
   if (!session?.isLoggedIn || !session.username) {
     throw new Error("Unauthorized");

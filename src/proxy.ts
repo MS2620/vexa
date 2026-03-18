@@ -4,15 +4,13 @@ import { getIronSession } from "iron-session";
 import { sessionOptions, SessionData } from "@/lib/session";
 import { cookies } from "next/headers";
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
-  // Skip middleware for API routes and static files
   if (path.startsWith("/_next") || path.startsWith("/api")) {
     return NextResponse.next();
   }
 
-  // Enforce Authentication
   const res = NextResponse.next();
   const session = await getIronSession<SessionData>(
     await cookies(),
