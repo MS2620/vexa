@@ -1,16 +1,86 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import MediaCard from "./components/MediaCard";
 import CarouselSection from "./components/CarouselSection";
 import DiscoverHero from "./components/DiscoverHero";
+import { subscribeUser } from "./actions";
+
+type MediaItem = {
+  id: number | string;
+  title?: string;
+  name?: string;
+  media_type?: string;
+  [key: string]: unknown;
+};
+
+type RequestItem = MediaItem & {
+  status?: string;
+  requested_by?: string;
+};
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+const INSTALL_PROMPT_SNOOZE_MS = 24 * 60 * 60 * 1000;
+const NOTIFICATION_PROMPT_SNOOZE_MS = 24 * 60 * 60 * 1000;
+
+function isIosDevice() {
+  if (typeof window === "undefined") return false;
+
+  const userAgent = window.navigator.userAgent || "";
+  const iPadOS13Up =
+    navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+
+  return /iPhone|iPad|iPod/i.test(userAgent) || iPadOS13Up;
+}
+
+function isStandaloneDisplayMode() {
+  if (typeof window === "undefined") return false;
+
+  const mediaStandalone = window.matchMedia(
+    "(display-mode: standalone)",
+  ).matches;
+  const navigatorStandalone =
+    typeof (window.navigator as Navigator & { standalone?: boolean })
+      .standalone === "boolean" &&
+    Boolean(
+      (window.navigator as Navigator & { standalone?: boolean }).standalone,
+    );
+
+  return mediaStandalone || navigatorStandalone;
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const normalized = (base64String + padding)
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const rawData = window.atob(normalized);
+  const output = new Uint8Array(rawData.length);
+
+  for (let index = 0; index < rawData.length; ++index) {
+    output[index] = rawData.charCodeAt(index);
+  }
+
+  return output;
+}
 
 export default function Dashboard() {
-  const [recentlyAdded, setRecentlyAdded] = useState<any[]>([]);
-  const [trending, setTrending] = useState<any[]>([]);
-  const [watchlist, setWatchlist] = useState<any[]>([]);
-  const [recentRequests, setRecentRequests] = useState<any[]>([]);
-  const [heroItem, setHeroItem] = useState<any>(null);
+  const [recentlyAdded, setRecentlyAdded] = useState<MediaItem[]>([]);
+  const [trending, setTrending] = useState<MediaItem[]>([]);
+  const [watchlist, setWatchlist] = useState<MediaItem[]>([]);
+  const [recentRequests, setRecentRequests] = useState<RequestItem[]>([]);
+  const [heroItem, setHeroItem] = useState<MediaItem | null>(null);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
+  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
+  const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -37,6 +107,182 @@ export default function Dashboard() {
     });
   }, []);
 
+  useEffect(() => {
+    let unmounted = false;
+    const onIos = isIosDevice();
+    const standalone = isStandaloneDisplayMode();
+
+    const isInstallPromptSnoozed = () => {
+      const dismissedAt = Number(
+        localStorage.getItem("vexa-install-dismissed-at") || "0",
+      );
+      if (!dismissedAt) return false;
+      return Date.now() - dismissedAt < INSTALL_PROMPT_SNOOZE_MS;
+    };
+
+    const isIosInstallPromptSnoozed = () => {
+      const dismissedAt = Number(
+        localStorage.getItem("vexa-ios-install-dismissed-at") || "0",
+      );
+      if (!dismissedAt) return false;
+      return Date.now() - dismissedAt < INSTALL_PROMPT_SNOOZE_MS;
+    };
+
+    const isNotificationPromptSnoozed = () => {
+      const dismissedAt = Number(
+        localStorage.getItem("vexa-notification-dismissed-at") || "0",
+      );
+      if (!dismissedAt) return false;
+      return Date.now() - dismissedAt < NOTIFICATION_PROMPT_SNOOZE_MS;
+    };
+
+    const canUsePush = () => {
+      if (!window.isSecureContext) return false;
+      if (!("Notification" in window)) return false;
+      if (!("serviceWorker" in navigator)) return false;
+      if (!("PushManager" in window)) return false;
+
+      if (onIos && !standalone) return false;
+      return true;
+    };
+
+    const shouldPromptNotifications = () => {
+      if (!canUsePush()) return false;
+      if (Notification.permission !== "default") return false;
+      return !isNotificationPromptSnoozed();
+    };
+
+    const registerServiceWorker = async () => {
+      if (!("serviceWorker" in navigator)) return;
+      try {
+        await navigator.serviceWorker.register("/sw.js");
+      } catch {
+        // no-op
+      }
+    };
+
+    void registerServiceWorker();
+
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      if (unmounted) return;
+
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+
+      if (!isInstallPromptSnoozed()) {
+        setShowInstallPrompt(true);
+        setShowNotificationPrompt(false);
+      }
+    };
+
+    const onAppInstalled = () => {
+      if (unmounted) return;
+      setDeferredInstallPrompt(null);
+      setShowInstallPrompt(false);
+      if (shouldPromptNotifications()) {
+        setShowNotificationPrompt(true);
+      }
+    };
+
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("appinstalled", onAppInstalled);
+
+    if (onIos && !standalone && !isIosInstallPromptSnoozed()) {
+      setShowIosInstallPrompt(true);
+      setShowNotificationPrompt(false);
+    } else {
+      if (shouldPromptNotifications()) {
+        setShowNotificationPrompt(true);
+      }
+    }
+
+    return () => {
+      unmounted = true;
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredInstallPrompt) return;
+
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    setDeferredInstallPrompt(null);
+    setShowInstallPrompt(false);
+
+    const notificationDismissedAt = Number(
+      localStorage.getItem("vexa-notification-dismissed-at") || "0",
+    );
+    const notificationPromptSnoozed =
+      notificationDismissedAt > 0 &&
+      Date.now() - notificationDismissedAt < NOTIFICATION_PROMPT_SNOOZE_MS;
+
+    if (
+      "Notification" in window &&
+      Notification.permission === "default" &&
+      !notificationPromptSnoozed
+    ) {
+      setShowNotificationPrompt(true);
+    }
+  };
+
+  const handleEnableNotifications = async () => {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      toast.error("This browser does not support push notifications");
+      return;
+    }
+
+    setIsEnablingNotifications(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast.error("Notification permission was not granted");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+
+      if (!subscription) {
+        const keyRes = await fetch("/api/push/public-key", {
+          cache: "no-store",
+        });
+        const keyData = await keyRes.json();
+        if (!keyRes.ok || !keyData?.publicKey) {
+          throw new Error(keyData?.error || "VAPID public key is unavailable");
+        }
+
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(
+            keyData.publicKey,
+          ) as BufferSource,
+        });
+      }
+
+      const serializableSubscription = subscription.toJSON() as {
+        endpoint: string;
+        expirationTime?: number | null;
+        keys?: {
+          p256dh?: string;
+          auth?: string;
+        };
+      };
+      await subscribeUser(serializableSubscription);
+      setShowNotificationPrompt(false);
+      toast.success("Notifications enabled");
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to enable notifications";
+      toast.error(message);
+    } finally {
+      setIsEnablingNotifications(false);
+    }
+  };
+
   const scrollCarousel = (id: string, direction: "left" | "right") => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -57,20 +303,156 @@ export default function Dashboard() {
   const sectionTitleClass =
     "text-xl font-bold text-white flex items-center gap-2";
 
+  const hasPrompts =
+    showInstallPrompt || showIosInstallPrompt || showNotificationPrompt;
+
   return (
-    <div className="space-y-10 pb-10">
-      <DiscoverHero
-        heroItem={heroItem}
-        onDetails={() =>
-          router.push(`/media/${heroItem.media_type || "movie"}/${heroItem.id}`)
-        }
-      />
+    <div className="flex flex-col gap-10 pb-10">
+      {hasPrompts && (
+        <div className="flex flex-col gap-3 px-4 md:px-8 mt-4 md:mt-2 z-20 relative">
+          {showInstallPrompt && (
+            <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    Install Vexa App
+                  </p>
+                  <p className="text-xs text-indigo-200/90">
+                    Add Vexa to your home screen for a faster app-like
+                    experience.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      localStorage.setItem(
+                        "vexa-install-dismissed-at",
+                        String(Date.now()),
+                      );
+                      setShowInstallPrompt(false);
+                      if (
+                        "Notification" in window &&
+                        Notification.permission === "default" &&
+                        !(() => {
+                          const dismissedAt = Number(
+                            localStorage.getItem(
+                              "vexa-notification-dismissed-at",
+                            ) || "0",
+                          );
+                          return (
+                            dismissedAt > 0 &&
+                            Date.now() - dismissedAt <
+                              NOTIFICATION_PROMPT_SNOOZE_MS
+                          );
+                        })()
+                      ) {
+                        setShowNotificationPrompt(true);
+                      }
+                    }}
+                    className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
+                  >
+                    Later
+                  </button>
+                  <button
+                    onClick={handleInstallApp}
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500"
+                  >
+                    Install
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showIosInstallPrompt && !showInstallPrompt && (
+            <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    Install Vexa on iPhone/iPad
+                  </p>
+                  <p className="text-xs text-indigo-200/90">
+                    In Safari: tap Share, then Add to Home Screen. Open Vexa
+                    from your Home Screen to enable push notifications.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      localStorage.setItem(
+                        "vexa-ios-install-dismissed-at",
+                        String(Date.now()),
+                      );
+                      setShowIosInstallPrompt(false);
+                    }}
+                    className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
+                  >
+                    Later
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showNotificationPrompt &&
+            !showInstallPrompt &&
+            !showIosInstallPrompt && (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      Enable Notifications
+                    </p>
+                    <p className="text-xs text-emerald-200/90">
+                      Get alerts when new movies/episodes are added to your
+                      library.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        localStorage.setItem(
+                          "vexa-notification-dismissed-at",
+                          String(Date.now()),
+                        );
+                        setShowNotificationPrompt(false);
+                      }}
+                      className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
+                    >
+                      Later
+                    </button>
+                    <button
+                      onClick={handleEnableNotifications}
+                      disabled={isEnablingNotifications}
+                      className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+                    >
+                      {isEnablingNotifications ? "Enabling..." : "Enable"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+        </div>
+      )}
+
+      <div className={`px-0 md:px-8 ${hasPrompts ? "mt-0" : ""}`}>
+        <DiscoverHero
+          heroItem={heroItem}
+          className={hasPrompts ? "md:mt-0" : "-mt-12 md:mt-2 lg:mt-0"}
+          onDetails={() => {
+            if (!heroItem) return;
+            router.push(
+              `/media/${heroItem.media_type || "movie"}/${heroItem.id}`,
+            );
+          }}
+        />
+      </div>
 
       <CarouselSection
         title="Recently Added"
         carouselId="carousel-recent"
         onScroll={scrollCarousel}
-        viewAllHref="/recently-added"
+        viewAllHref="/movies"
         sectionClassName={sectionClass}
         headerClassName={sectionHeaderClass}
         titleClassName={sectionTitleClass}

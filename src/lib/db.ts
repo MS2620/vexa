@@ -1,7 +1,60 @@
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import { access } from "fs/promises";
+import { constants as fsConstants } from "fs";
+
+let hasCheckedSymlinkRootPermissions = false;
+let hasCheckedDebridMountPermissions = false;
+
+async function checkSymlinkRootPermissionsOnce() {
+  if (hasCheckedSymlinkRootPermissions) return;
+  hasCheckedSymlinkRootPermissions = true;
+
+  const symlinkRoot = process.env.PLEX_SYMLINK_ROOT || "/mnt/plex_symlinks";
+
+  try {
+    await access(symlinkRoot, fsConstants.W_OK);
+  } catch (error) {
+    const uid =
+      typeof process.getuid === "function" ? String(process.getuid()) : "?";
+    const gid =
+      typeof process.getgid === "function" ? String(process.getgid()) : "?";
+    const message =
+      error instanceof Error ? error.message : "Unknown permission error";
+
+    console.warn(
+      `[startup] PLEX_SYMLINK_ROOT is not writable: ${symlinkRoot} (uid:gid ${uid}:${gid}). ${message}. ` +
+        "Set APP_UID/APP_GID to match host ownership and ensure the directory is writable.",
+    );
+  }
+}
+
+async function checkDebridMountPermissionsOnce() {
+  if (hasCheckedDebridMountPermissions) return;
+  hasCheckedDebridMountPermissions = true;
+
+  const debridMount = process.env.DEBRID_MOUNT || "/mnt/zurg/__all__";
+
+  try {
+    await access(debridMount, fsConstants.R_OK);
+  } catch (error) {
+    const uid =
+      typeof process.getuid === "function" ? String(process.getuid()) : "?";
+    const gid =
+      typeof process.getgid === "function" ? String(process.getgid()) : "?";
+    const message =
+      error instanceof Error ? error.message : "Unknown permission error";
+
+    console.warn(
+      `[startup] DEBRID_MOUNT is not readable: ${debridMount} (uid:gid ${uid}:${gid}). ${message}. ` +
+        "Ensure rclone is mounted and this path is accessible in the app container.",
+    );
+  }
+}
 
 export async function openDb() {
+  await checkSymlinkRootPermissionsOnce();
+  await checkDebridMountPermissionsOnce();
   return open({
     filename: process.env.DB_PATH || "./database.sqlite",
     driver: sqlite3.Database,
@@ -61,6 +114,12 @@ export async function initDb() {
     `ALTER TABLE requests ADD COLUMN info_hash TEXT DEFAULT ''`,
     `ALTER TABLE settings ADD COLUMN preferred_resolution TEXT DEFAULT '1080p'`,
     `ALTER TABLE settings ADD COLUMN preferred_language TEXT DEFAULT 'en'`,
+    `ALTER TABLE settings ADD COLUMN vapid_public_key TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN vapid_private_key TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN vapid_subject TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN vapid_public_key TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN vapid_private_key TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN vapid_subject TEXT DEFAULT ''`,
     // New migrations
     `ALTER TABLE requests ADD COLUMN approved INTEGER DEFAULT 1`,
     `ALTER TABLE users ADD COLUMN notify_email TEXT DEFAULT ''`,
@@ -92,6 +151,26 @@ export async function initDb() {
       context TEXT,
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL,
+      endpoint TEXT NOT NULL,
+      subscription_json TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(username, endpoint)
+    )`,
+    `CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL,
+      type TEXT DEFAULT 'system',
+      title TEXT NOT NULL,
+      body TEXT,
+      target_path TEXT DEFAULT '/',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `ALTER TABLE notifications ADD COLUMN is_read INTEGER DEFAULT 0`,
+    `ALTER TABLE notifications ADD COLUMN read_at DATETIME DEFAULT NULL`,
   ];
 
   for (const migration of migrations) {

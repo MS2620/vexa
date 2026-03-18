@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
+import { access } from "fs/promises";
 import { openDb } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { createSymlinks } from "@/lib/symlinks";
+import { notifyUsers } from "@/lib/notifications";
 
 type RDFile = {
   id: number;
   path: string;
   bytes: number;
+  selected?: number;
 };
 
 export async function POST(
@@ -20,11 +23,19 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const db = await openDb();
-    const req = await db.get("SELECT * FROM requests WHERE id = ?", [id]);
+    const req = await db.get(
+      "SELECT * FROM requests WHERE id = ? AND status = 'Pending Approval' AND approved = 0",
+      [id],
+    );
     if (!req) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    await db.run(
+      `UPDATE requests SET status = 'Processing', approved = 1 WHERE id = ?`,
+      [id],
+    );
+
     const settings = await db.get(
-      "SELECT rd_token, plex_url, plex_token, plex_lib_id, tmdb_key FROM settings WHERE id = 1",
+      "SELECT rd_token, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, tmdb_key FROM settings WHERE id = 1",
     );
 
     const rdParams = new URLSearchParams();
@@ -80,26 +91,133 @@ export async function POST(
       );
     }
 
-    // Create Plex symlinks (fire-and-forget)
-    createSymlinks({
-      infoData,
+    let selectedInfoData = infoData;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+
+      const selectedInfoRes = await fetch(
+        `https://api.real-debrid.com/rest/1.0/torrents/info/${rdData.id}`,
+        { headers: { Authorization: `Bearer ${settings.rd_token}` } },
+      );
+      const latest = await selectedInfoRes.json();
+
+      if (latest?.files?.some((f: RDFile) => f.selected === 1)) {
+        selectedInfoData = latest;
+        break;
+      }
+
+      selectedInfoData = latest;
+    }
+
+    const createdPaths = await createSymlinks({
+      infoData: selectedInfoData,
       title: req.title || "Unknown",
       tmdbId: req.tmdb_id || null,
       mediaType: req.media_type || "movie",
       season: req.season || null,
       tmdbKey: settings.tmdb_key || "",
-    }).catch((e) => console.error("[symlinks] Error:", e));
+    });
 
-    await db.run(
-      `UPDATE requests SET status = 'Requested', approved = 1 WHERE id = ?`,
-      [id],
-    );
+    if (createdPaths.length > 0) {
+      const checkPath = createdPaths[0];
+      let fileExists = false;
+      let attempts = 0;
+      const maxAttempts = 24;
 
-    setTimeout(() => {
-      fetch(
-        `${settings.plex_url}/library/sections/${settings.plex_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
-      ).catch((e) => console.error("Plex refresh failed:", e));
-    }, 5000);
+      while (!fileExists && attempts < maxAttempts) {
+        try {
+          await access(checkPath);
+          fileExists = true;
+        } catch {
+          attempts++;
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+      }
+    }
+
+    const mediaType = req.media_type === "tv" ? "tv" : "movie";
+    const sectionId =
+      mediaType === "tv" ? settings.plex_tv_lib_id : settings.plex_lib_id;
+
+    if (settings.plex_url && settings.plex_token) {
+      try {
+        const refreshRes = sectionId
+          ? await fetch(
+              `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
+            )
+          : await fetch(
+              `${settings.plex_url}/library/sections/all/refresh?X-Plex-Token=${settings.plex_token}`,
+            );
+
+        if (refreshRes.ok) {
+          await notifyUsers({
+            type: "request",
+            title: `${req.title} added to library`,
+            body: `${mediaType === "tv" ? "Series" : "Movie"} request was approved and Plex refresh was triggered.`,
+            targetPath: req.tmdb_id
+              ? `/media/${mediaType}/${req.tmdb_id}`
+              : "/requests",
+          });
+
+          if (!sectionId) {
+            await db.run(
+              `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+              [id],
+            );
+          } else {
+            const plexItemsRes = await fetch(
+              `${settings.plex_url}/library/sections/${sectionId}/all?includeGuids=1&X-Plex-Token=${settings.plex_token}`,
+              { headers: { Accept: "application/json" } },
+            );
+
+            if (plexItemsRes.ok) {
+              const plexData = await plexItemsRes.json();
+              const metadata = plexData?.MediaContainer?.Metadata || [];
+              const tmdbId = req.tmdb_id?.toString();
+              const titleNorm = req.title?.toLowerCase().trim();
+
+              const found = metadata.some((item: any) => {
+                const tmdbGuids = (item.Guid || [])
+                  .filter((guid: any) => guid.id?.startsWith("tmdb://"))
+                  .map((guid: any) => guid.id.replace("tmdb://", ""));
+                const plexTitle = item.title?.toLowerCase().trim();
+
+                return (
+                  (tmdbId && tmdbGuids.includes(tmdbId)) ||
+                  (titleNorm && plexTitle === titleNorm)
+                );
+              });
+
+              if (found) {
+                await db.run(
+                  `UPDATE requests SET status = 'Available' WHERE id = ?`,
+                  [id],
+                );
+              } else {
+                await db.run(
+                  `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+                  [id],
+                );
+              }
+            } else {
+              await db.run(
+                `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+                [id],
+              );
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Plex refresh failed:", e);
+        await db.run(`UPDATE requests SET status = 'Requested' WHERE id = ?`, [
+          id,
+        ]);
+      }
+    } else {
+      await db.run(`UPDATE requests SET status = 'Requested' WHERE id = ?`, [
+        id,
+      ]);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
@@ -120,7 +238,18 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const db = await openDb();
-    await db.run(`UPDATE requests SET status = 'Denied' WHERE id = ?`, [id]);
+    const result = await db.run(
+      `UPDATE requests SET status = 'Denied' WHERE id = ? AND status = 'Pending Approval' AND approved = 0`,
+      [id],
+    );
+
+    if (!result.changes) {
+      return NextResponse.json(
+        { error: "Request is no longer pending approval" },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";

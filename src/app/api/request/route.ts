@@ -4,6 +4,7 @@ import { openDb } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { createSymlinks } from "@/lib/symlinks";
 import { addLog } from "@/lib/logger";
+import { notifyUsers } from "@/lib/notifications";
 
 export async function POST(req: Request) {
   try {
@@ -33,7 +34,13 @@ export async function POST(req: Request) {
 
     const session = await getSession();
     const requestedBy = session.username || "unknown";
-    const isAdmin = session.role === "admin";
+    const currentUser = session.username
+      ? await db.get<{ role?: string }>(
+          "SELECT role FROM users WHERE username = ? LIMIT 1",
+          [session.username],
+        )
+      : null;
+    const isAdmin = (currentUser?.role || session.role) === "admin";
 
     // ✅ Stop here for non-admins — save to DB and return pending
     // Don't touch RD at all until an admin approves
@@ -62,6 +69,34 @@ export async function POST(req: Request) {
         mediaType,
         status: "Pending Approval",
       });
+
+      try {
+        const admins = await db.all<{ username: string }[]>(
+          "SELECT username FROM users WHERE role = 'admin' AND username IS NOT NULL AND TRIM(username) != ''",
+        );
+        const adminUsernames = admins
+          .map((row) => row.username.trim())
+          .filter(Boolean);
+
+        if (adminUsernames.length > 0) {
+          await notifyUsers({
+            type: "request",
+            title: "New request pending approval",
+            body: `${requestedBy} requested ${title || "a title"}`,
+            targetPath: "/requests",
+            usernames: adminUsernames,
+          });
+        }
+      } catch (notificationError) {
+        await addLog("warn", "Failed to notify admins about pending request", {
+          requestedBy,
+          title,
+          error:
+            notificationError instanceof Error
+              ? notificationError.message
+              : String(notificationError),
+        });
+      }
 
       return NextResponse.json({ success: true, pending: true });
     }
@@ -257,9 +292,23 @@ export async function POST(req: Request) {
             "info",
             `Triggering Plex library scan for ${title} (${requestedMediaType})`,
           );
-          await fetch(
+          const refreshRes = await fetch(
             `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
-          ).catch((e) => console.error("Plex refresh failed:", e));
+          ).catch((e) => {
+            console.error("Plex refresh failed:", e);
+            return null;
+          });
+
+          if (refreshRes?.ok) {
+            await notifyUsers({
+              type: "request",
+              title: `${title} added to library`,
+              body: `${requestedMediaType === "tv" ? "Series" : "Movie"} request was added and Plex refresh was triggered.`,
+              targetPath: tmdbId
+                ? `/media/${requestedMediaType}/${tmdbId}`
+                : "/requests",
+            });
+          }
         }
       })
       .catch((e) => {
@@ -288,11 +337,6 @@ export async function POST(req: Request) {
         1,
       ],
     );
-
-    // Only send to RD if approved
-    if (!isAdmin) {
-      return NextResponse.json({ success: true, pending: true });
-    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

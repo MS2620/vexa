@@ -8,9 +8,12 @@ import { Toaster } from "react-hot-toast";
 
 type PendingRequestNotification = {
   id: string | number;
+  type?: "request" | "automation" | "system";
   title: string;
-  requested_by?: string;
-  requested_at?: string;
+  subtitle?: string;
+  created_at?: string;
+  target_path?: string;
+  is_read?: boolean;
 };
 
 export default function RootLayout({
@@ -27,7 +30,9 @@ export default function RootLayout({
   const [pendingNotifications, setPendingNotifications] = useState<
     PendingRequestNotification[]
   >([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const notificationRef = useRef<HTMLDivElement | null>(null);
+  const hasBootstrappedScheduler = useRef(false);
 
   const getPageTitle = (path: string) => {
     if (path.startsWith("/media/")) return "Media Details";
@@ -55,19 +60,41 @@ export default function RootLayout({
     document.title = `${getPageTitle(pathname)} • Vexa`;
   }, [pathname]);
 
+  useEffect(() => {
+    if (hasBootstrappedScheduler.current) return;
+    if (pathname === "/login" || pathname === "/setup") return;
+
+    hasBootstrappedScheduler.current = true;
+    fetch("/api/setup/check", { cache: "no-store" }).catch(() => undefined);
+  }, [pathname]);
+
   const fetchNotifications = async () => {
     try {
       setNotificationsLoading(true);
-      const res = await fetch("/api/dashboard/requests?status=pending", {
+      const res = await fetch("/api/notifications", {
         cache: "no-store",
       });
       const data = await res.json();
       setPendingNotifications(data.results || []);
+      setUnreadCount(Number(data.unreadCount || 0));
     } catch (error) {
       console.error("Failed to fetch notifications:", error);
       setPendingNotifications([]);
+      setUnreadCount(0);
     } finally {
       setNotificationsLoading(false);
+    }
+  };
+
+  const markNotificationRead = async (id: string | number) => {
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      // no-op
     }
   };
 
@@ -128,6 +155,7 @@ export default function RootLayout({
           <link rel="icon" href="/favicon.ico" sizes="any" />
           <link rel="shortcut icon" href="/favicon.ico" />
           <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+          <link rel="manifest" href="/manifest.webmanifest" />
         </head>
         <body className="bg-[#0f111a] text-white font-sans">
           {children}
@@ -152,6 +180,7 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="shortcut icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.webmanifest" />
       </head>
       <body className="bg-[#0f111a] text-white font-sans min-h-screen">
         <Navigation />
@@ -179,7 +208,7 @@ export default function RootLayout({
                 className="relative p-2.5 rounded-full hover:bg-white/5 transition-colors text-gray-400 hover:text-white border border-transparent hover:border-white/5"
               >
                 <Bell className="w-5 h-5" />
-                {pendingNotifications.length > 0 && (
+                {unreadCount > 0 && (
                   <span className="absolute top-2.5 right-3 w-2 h-2 rounded-full bg-indigo-500 border border-[#0f111a]"></span>
                 )}
               </button>
@@ -191,7 +220,7 @@ export default function RootLayout({
                       Notifications
                     </h3>
                     <span className="text-xs text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
-                      {pendingNotifications.length} pending
+                      {pendingNotifications.length} items
                     </span>
                   </div>
 
@@ -202,24 +231,58 @@ export default function RootLayout({
                       </p>
                     ) : pendingNotifications.length === 0 ? (
                       <p className="text-sm text-gray-400 px-4 py-4">
-                        No pending requests right now.
+                        No notifications right now.
                       </p>
                     ) : (
                       pendingNotifications.slice(0, 8).map((notification) => (
                         <button
                           key={notification.id}
                           onClick={() => {
+                            if (
+                              String(notification.id).startsWith("notif-") &&
+                              !notification.is_read
+                            ) {
+                              setPendingNotifications((previous) =>
+                                previous.map((item) =>
+                                  item.id === notification.id
+                                    ? { ...item, is_read: true }
+                                    : item,
+                                ),
+                              );
+                              setUnreadCount((previous) =>
+                                previous > 0 ? previous - 1 : 0,
+                              );
+                              void markNotificationRead(notification.id);
+                            }
                             setIsNotificationsOpen(false);
-                            router.push("/requests");
+                            router.push(
+                              notification.target_path || "/requests",
+                            );
                           }}
                           className="w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors"
                         >
-                          <p className="text-sm font-medium text-white truncate">
-                            {notification.title}
-                          </p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-white truncate">
+                              {notification.title}
+                            </p>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap ${
+                                notification.type === "automation"
+                                  ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
+                                  : notification.type === "system"
+                                    ? "text-gray-300 bg-gray-500/10 border-gray-500/20"
+                                    : "text-indigo-300 bg-indigo-500/10 border-indigo-500/20"
+                              }`}
+                            >
+                              {notification.type === "automation"
+                                ? "Automation"
+                                : notification.type === "system"
+                                  ? "System"
+                                  : "Request"}
+                            </span>
+                          </div>
                           <p className="text-xs text-gray-400 mt-1">
-                            Requested by{" "}
-                            {notification.requested_by || "Unknown"}
+                            {notification.subtitle || "Notification"}
                           </p>
                         </button>
                       ))
@@ -233,7 +296,7 @@ export default function RootLayout({
                     }}
                     className="w-full py-2.5 text-sm text-indigo-300 hover:text-white hover:bg-indigo-500/10 transition-colors border-t border-white/10"
                   >
-                    View all requests
+                    View requests
                   </button>
                 </div>
               )}

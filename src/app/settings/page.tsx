@@ -10,6 +10,8 @@ import {
   SkipForward,
 } from "lucide-react";
 
+const DEFAULT_VAPID_SUBJECT = "mailto:notifications@yourdomain.com";
+
 type SyncItem = {
   status: "synced" | "skipped" | "failed";
   filename: string;
@@ -28,6 +30,7 @@ export default function Settings() {
     plex_tv_lib_id: "",
     preferred_resolution: "1080p",
     preferred_language: "en",
+    vapid_subject: DEFAULT_VAPID_SUBJECT,
     smtp_host: "",
     smtp_port: "587",
     smtp_user: "",
@@ -106,7 +109,16 @@ export default function Settings() {
   useEffect(() => {
     fetch("/api/settings")
       .then((res) => res.json())
-      .then((data) => setFormData((prev) => ({ ...prev, ...data })));
+      .then((data) =>
+        setFormData((prev) => ({
+          ...prev,
+          ...data,
+          vapid_subject:
+            typeof data?.vapid_subject === "string" && data.vapid_subject.trim()
+              ? data.vapid_subject.trim()
+              : DEFAULT_VAPID_SUBJECT,
+        })),
+      );
   }, []);
 
   // Load live service status
@@ -279,6 +291,87 @@ export default function Settings() {
                 : "Cannot reach Plex. Check your URL and token below."}
           </p>
         </div>
+
+        {/* Mount Health Card */}
+        <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20 md:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Mount Health</h3>
+            {statusLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+            ) : serviceStatus?.mounts?.debrid_mount?.readable &&
+              serviceStatus?.mounts?.plex_symlink_root?.writable ? (
+              <span className="text-xs px-2 py-1 rounded-full font-bold border bg-green-600/20 text-green-400 border-green-600/30">
+                ● Healthy
+              </span>
+            ) : (
+              <span className="text-xs px-2 py-1 rounded-full font-bold border bg-yellow-600/20 text-yellow-300 border-yellow-600/30">
+                ● Attention Needed
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-3 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-gray-300 font-medium">Debrid Mount</p>
+                <p className="text-xs text-gray-500 break-all">
+                  {serviceStatus?.mounts?.debrid_mount?.path ||
+                    "/mnt/zurg/__all__"}
+                </p>
+              </div>
+              <span
+                className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
+                  serviceStatus?.mounts?.debrid_mount?.readable
+                    ? "bg-green-600/20 text-green-400 border-green-600/30"
+                    : "bg-red-600/20 text-red-400 border-red-600/30"
+                }`}
+              >
+                {serviceStatus?.mounts?.debrid_mount?.readable
+                  ? "Readable"
+                  : "Not Readable"}
+              </span>
+            </div>
+
+            {!statusLoading &&
+              !serviceStatus?.mounts?.debrid_mount?.readable && (
+                <p className="text-xs text-yellow-300/90 wrap-break-word">
+                  {serviceStatus?.mounts?.debrid_mount?.error ||
+                    "Debrid mount is not accessible. Ensure rclone is mounted and visible to the app container."}
+                </p>
+              )}
+
+            <div className="pt-2 border-t border-white/5" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-gray-300 font-medium">Plex Symlink Root</p>
+                <p className="text-xs text-gray-500 break-all">
+                  {serviceStatus?.mounts?.plex_symlink_root?.path ||
+                    "/mnt/plex_symlinks"}
+                </p>
+              </div>
+              <span
+                className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
+                  serviceStatus?.mounts?.plex_symlink_root?.writable
+                    ? "bg-green-600/20 text-green-400 border-green-600/30"
+                    : "bg-red-600/20 text-red-400 border-red-600/30"
+                }`}
+              >
+                {serviceStatus?.mounts?.plex_symlink_root?.writable
+                  ? "Writable"
+                  : "Not Writable"}
+              </span>
+            </div>
+
+            {!statusLoading &&
+              !serviceStatus?.mounts?.plex_symlink_root?.writable && (
+                <p className="text-xs text-yellow-300/90 wrap-break-word">
+                  {serviceStatus?.mounts?.plex_symlink_root?.error ||
+                    "Symlink root is not writable. Match APP_UID/APP_GID with host ownership and chmod/chown the directory."}
+                </p>
+              )}
+          </div>
+        </div>
       </div>
 
       {/* ── CONFIGURATION FORM ── */}
@@ -437,6 +530,35 @@ export default function Settings() {
                 <option value="ko">Korean</option>
                 <option value="zh">Chinese</option>
               </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/5" />
+
+        {/* Push Notifications */}
+        <div>
+          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
+            Push Notifications
+          </h2>
+          <div className="grid grid-cols-1 gap-6">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                VAPID Subject
+              </label>
+              <input
+                type="text"
+                placeholder="mailto:you@domain.com"
+                value={formData.vapid_subject || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, vapid_subject: e.target.value })
+                }
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
+              />
+              <p className="mt-2 text-xs text-gray-500">
+                VAPID keys are generated automatically. Only this contact
+                subject is required for web-push.
+              </p>
             </div>
           </div>
         </div>

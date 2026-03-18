@@ -8,7 +8,6 @@ import {
   ShieldBan,
   Users,
   Settings,
-  Play,
   Menu,
   X,
   Search,
@@ -26,6 +25,12 @@ export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [mobileSearchQuery, setMobileSearchQuery] = useState("");
+  const [currentUser, setCurrentUser] = useState<{
+    username: string;
+    role: string;
+  } | null>(null);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -33,10 +38,23 @@ export default function Navigation() {
     router.refresh();
   };
 
-  // Close mobile menu on route change
   useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
+    const loadCurrentUser = async () => {
+      try {
+        const response = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        setCurrentUser({
+          username: data.username || "User",
+          role: data.role || "user",
+        });
+      } catch {
+        setCurrentUser(null);
+      }
+    };
+
+    loadCurrentUser();
+  }, []);
 
   const navItems = [
     { href: "/", label: "Discover", icon: Compass },
@@ -57,6 +75,19 @@ export default function Navigation() {
     if (path === "/") return pathname === "/";
     return pathname.startsWith(path);
   };
+
+  const submitMobileSearch = () => {
+    const query = mobileSearchQuery.trim();
+    if (!query) return;
+
+    router.push(`/search?q=${encodeURIComponent(query)}`);
+    setIsMobileSearchOpen(false);
+  };
+
+  const username = currentUser?.username || "User";
+  const role = currentUser?.role || "user";
+  const userInitial = username.charAt(0).toUpperCase();
+  const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
 
   if (pathname === "/login" || pathname === "/setup") return null;
 
@@ -145,14 +176,14 @@ export default function Navigation() {
             className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group"
           >
             <div className="w-9 h-9 rounded-full bg-linear-to-br from-pink-500 to-rose-600 flex items-center justify-center text-sm font-bold text-white shadow-lg shadow-pink-500/20 ring-2 ring-[#0f111a] group-hover:ring-white/10 transition-all">
-              M
+              {userInitial}
             </div>
             <div className="flex flex-col overflow-hidden">
               <span className="text-sm font-semibold text-white truncate">
-                Mauro
+                {username}
               </span>
               <span className="text-xs text-gray-400 truncate">
-                Administrator
+                {roleLabel}
               </span>
             </div>
             <LogOut className="w-4 h-4 text-gray-500 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -169,19 +200,127 @@ export default function Navigation() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleLogout}
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              setIsMobileSearchOpen(true);
+            }}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-gray-400 border border-white/5 hover:bg-white/10"
+            aria-label="Open search"
           >
-            <LogOut className="w-4 h-4" />
+            <Search className="w-4 h-4" />
           </button>
-          <Link
-            href="/settings"
+          <button
+            onClick={() => {
+              setIsMobileSearchOpen(false);
+              setIsMobileMenuOpen(true);
+            }}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-gray-400 border border-white/5 hover:bg-white/10"
+            aria-label="Open navigation menu"
           >
-            <Settings className="w-4 h-4" />
-          </Link>
+            <Menu className="w-4 h-4" />
+          </button>
         </div>
       </header>
+
+      {/* MOBILE SEARCH OVERLAY */}
+      {isMobileSearchOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-60 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setIsMobileSearchOpen(false)}
+        >
+          <div
+            className="w-full max-w-md bg-[#161824] border border-white/10 rounded-xl p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 border border-white/10 rounded-lg px-3 py-2 bg-[#0f111a]">
+              <Search className="w-4 h-4 text-gray-500" />
+              <input
+                autoFocus
+                type="text"
+                value={mobileSearchQuery}
+                onChange={(e) => setMobileSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    submitMobileSearch();
+                  }
+                }}
+                placeholder="Search movies, series, people..."
+                className="flex-1 bg-transparent text-white placeholder-gray-500 text-sm focus:outline-none"
+              />
+              <button
+                onClick={() => setIsMobileSearchOpen(false)}
+                className="text-gray-400 hover:text-white"
+                aria-label="Close search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={submitMobileSearch}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium"
+              >
+                Search
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE NAV MENU */}
+      {isMobileMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-60 bg-black/60 backdrop-blur-sm flex items-start justify-end p-4 pt-20"
+          onClick={() => setIsMobileMenuOpen(false)}
+        >
+          <div
+            className="w-full max-w-xs bg-[#161824] border border-white/10 rounded-xl p-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-2 pb-2 mb-2 border-b border-white/10 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white truncate">
+                  {username}
+                </p>
+                <p className="text-xs text-gray-400 truncate">{roleLabel}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                className="shrink-0 inline-flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-md px-2 py-1"
+                aria-label="Log out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Logout
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {adminItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = isActivePath(item.href);
+                return (
+                  <Link
+                    key={`mobile-admin-${item.href}`}
+                    href={item.href}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      isActive
+                        ? "text-white bg-white/10 border border-white/10"
+                        : "text-gray-300 hover:bg-white/5"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MOBILE BOTTOM NAV */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f111a]/90 backdrop-blur-xl border-t border-white/10 pb-safe safe-area-pb">

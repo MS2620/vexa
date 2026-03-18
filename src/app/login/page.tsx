@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "../components/Logo";
 
@@ -7,7 +8,27 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [checkingSetup, setCheckingSetup] = useState(true);
   const router = useRouter();
+
+  useEffect(() => {
+    const checkSetup = async () => {
+      try {
+        const res = await fetch("/api/setup/check", { cache: "no-store" });
+        const { isConfigured } = await res.json();
+
+        if (!isConfigured) {
+          router.replace("/setup");
+          return;
+        }
+      } catch {
+      } finally {
+        setCheckingSetup(false);
+      }
+    };
+
+    checkSetup();
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,6 +45,14 @@ export default function Login() {
       setError("Invalid username or password");
     }
   };
+
+  if (checkingSetup) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+        <div className="text-gray-300 text-sm">Checking setup...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">

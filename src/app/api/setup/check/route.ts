@@ -4,12 +4,13 @@ import { ensureEpisodeAutomationStarted } from "@/lib/episode-automation";
 
 export async function GET() {
   try {
-    ensureEpisodeAutomationStarted();
-
     // 1. Initialize the DB (Creates tables if they don't exist)
     await initDb();
 
-    // 2. Open and check settings
+    // 2. Start episode automation only after DB is ready
+    ensureEpisodeAutomationStarted();
+
+    // 3. Open and check settings
     const db = await openDb();
     const settings = await db.get("SELECT tmdb_key FROM settings WHERE id = 1");
 

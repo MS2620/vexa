@@ -1,5 +1,7 @@
 import { openDb } from "@/lib/db";
 import { createSymlinks } from "@/lib/symlinks";
+import { addLog } from "@/lib/logger";
+import { notifyUsers } from "@/lib/notifications";
 
 type Stream = {
   infoHash?: string;
@@ -40,6 +42,22 @@ function episodeLabel(ep: {
   episode: number;
 }): string {
   return `${ep.showName} S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")}`;
+}
+
+async function logAutomation(
+  level: "info" | "warn" | "error" | "success",
+  message: string,
+  context?: unknown,
+): Promise<void> {
+  const logMessage = `[automation] ${message}`;
+
+  if (level === "error") {
+    console.error(logMessage, context ?? "");
+  } else {
+    console.log(logMessage);
+  }
+
+  await addLog(level, logMessage, context);
 }
 
 function dateKey(date: Date): string {
@@ -336,10 +354,23 @@ async function downloadInfoHash(
   );
 
   if (settings.plex_url && settings.plex_token && settings.plex_tv_lib_id) {
-    setTimeout(() => {
-      fetch(
-        `${settings.plex_url}/library/sections/${settings.plex_tv_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
-      ).catch(() => undefined);
+    setTimeout(async () => {
+      try {
+        const refreshRes = await fetch(
+          `${settings.plex_url}/library/sections/${settings.plex_tv_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
+        );
+
+        if (refreshRes.ok) {
+          await notifyUsers({
+            type: "automation",
+            title: `${title} added to library`,
+            body: `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")} was added and Plex refresh was triggered.`,
+            targetPath: `/media/tv/${tmdbId}`,
+          });
+        }
+      } catch {
+        // no-op
+      }
     }, 5000);
   }
 
@@ -394,9 +425,9 @@ async function attemptEpisodeDownload(ep: EpisodeCandidate): Promise<boolean> {
     ep.episode,
   );
   if (candidateHashes.length === 0) {
-    console.log(
-      `[automation] No streams found for ${episodeLabel(ep)} (tmdb:${ep.tmdbId})`,
-    );
+    await logAutomation("info", `No streams found for ${episodeLabel(ep)}`, {
+      tmdbId: ep.tmdbId,
+    });
     return false;
   }
 
@@ -410,25 +441,38 @@ async function attemptEpisodeDownload(ep: EpisodeCandidate): Promise<boolean> {
       ep.episode,
     );
     if (ok) {
-      console.log(
-        `[automation] Download started for ${episodeLabel(ep)} with hash ${hash.slice(0, 8)}...`,
+      await logAutomation(
+        "success",
+        `Added ${episodeLabel(ep)} from hash ${hash.slice(0, 8)}...`,
+        {
+          tmdbId: ep.tmdbId,
+          season: ep.season,
+          episode: ep.episode,
+          hashPrefix: hash.slice(0, 8),
+        },
       );
       return true;
     }
   }
 
-  console.log(
-    `[automation] Tried ${candidateHashes.length} stream(s) but none succeeded for ${episodeLabel(ep)}`,
+  await logAutomation(
+    "warn",
+    `Tried ${candidateHashes.length} stream(s) but none succeeded for ${episodeLabel(ep)}`,
+    {
+      tmdbId: ep.tmdbId,
+      triedStreams: candidateHashes.length,
+    },
   );
   return false;
 }
 
 async function runEveningScan(todayKey: string): Promise<void> {
-  console.log(`[automation] Evening scan started for ${todayKey}`);
+  await logAutomation("info", `Evening scan started for ${todayKey}`);
   const todaysEpisodes = await getWatchlistCandidatesForDate(todayKey);
   if (todaysEpisodes.length === 0) {
-    console.log(
-      "[automation] Evening scan: no watchlist episodes airing today",
+    await logAutomation(
+      "info",
+      "Evening scan: no watchlist episodes airing today",
     );
     return;
   }
@@ -436,8 +480,9 @@ async function runEveningScan(todayKey: string): Promise<void> {
   let downloaded = 0;
   let queued = 0;
 
-  console.log(
-    `[automation] Evening scan: ${todaysEpisodes.length} candidate episode(s)`,
+  await logAutomation(
+    "info",
+    `Evening scan: ${todaysEpisodes.length} candidate episode(s)`,
   );
 
   for (const ep of todaysEpisodes) {
@@ -451,8 +496,14 @@ async function runEveningScan(todayKey: string): Promise<void> {
     }
   }
 
-  console.log(
-    `[automation] Evening scan complete: downloaded=${downloaded}, queued_for_retry=${queued}`,
+  await logAutomation(
+    "info",
+    `Evening scan complete: downloaded=${downloaded}, queued_for_retry=${queued}`,
+    {
+      date: todayKey,
+      downloaded,
+      queued,
+    },
   );
 }
 
@@ -460,8 +511,9 @@ async function runMorningRetry(today: Date): Promise<void> {
   const db = await openDb();
   const yesterdayKey = dateKey(addDays(today, -1));
 
-  console.log(
-    `[automation] Morning retry started for pending episodes up to ${yesterdayKey}`,
+  await logAutomation(
+    "info",
+    `Morning retry started for pending episodes up to ${yesterdayKey}`,
   );
 
   const pending = await db.all<
@@ -482,15 +534,16 @@ async function runMorningRetry(today: Date): Promise<void> {
   );
 
   if (pending.length === 0) {
-    console.log("[automation] Morning retry: no pending episodes to check");
+    await logAutomation("info", "Morning retry: no pending episodes to check");
     return;
   }
 
   let downloaded = 0;
   let stillPending = 0;
 
-  console.log(
-    `[automation] Morning retry: ${pending.length} pending episode(s)`,
+  await logAutomation(
+    "info",
+    `Morning retry: ${pending.length} pending episode(s)`,
   );
 
   for (const ep of pending) {
@@ -521,8 +574,14 @@ async function runMorningRetry(today: Date): Promise<void> {
     }
   }
 
-  console.log(
-    `[automation] Morning retry complete: downloaded=${downloaded}, still_pending=${stillPending}`,
+  await logAutomation(
+    "info",
+    `Morning retry complete: downloaded=${downloaded}, still_pending=${stillPending}`,
+    {
+      upToDate: yesterdayKey,
+      downloaded,
+      stillPending,
+    },
   );
 }
 
@@ -535,13 +594,20 @@ async function tick(): Promise<void> {
     const todayKey = dateKey(now);
     const hour = now.getHours();
 
+    await logAutomation("info", `Scheduler tick started (hour=${hour})`, {
+      date: todayKey,
+      hour,
+    });
+
     // Evening run window (18:00-22:59), once per day
     if (
       hour >= 18 &&
       hour <= 22 &&
       globalState.__episodeAutomationLastEveningDate !== todayKey
     ) {
-      console.log("[automation] Triggering evening window run");
+      await logAutomation("info", "Triggering evening window run", {
+        date: todayKey,
+      });
       await runEveningScan(todayKey);
       globalState.__episodeAutomationLastEveningDate = todayKey;
     }
@@ -552,13 +618,15 @@ async function tick(): Promise<void> {
       hour <= 10 &&
       globalState.__episodeAutomationLastMorningDate !== todayKey
     ) {
-      console.log("[automation] Triggering morning retry window run");
+      await logAutomation("info", "Triggering morning retry window run", {
+        date: todayKey,
+      });
       await runMorningRetry(now);
       globalState.__episodeAutomationLastMorningDate = todayKey;
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("[automation] Episode scheduler error:", msg);
+    await logAutomation("error", "Episode scheduler error", { message: msg });
   } finally {
     globalState.__episodeAutomationRunning = false;
   }
@@ -580,5 +648,7 @@ export function ensureEpisodeAutomationStarted(): void {
     15 * 60 * 1000,
   );
 
-  console.log("[automation] Episode scheduler started");
+  void logAutomation("success", "Episode scheduler started", {
+    intervalMinutes: 15,
+  });
 }

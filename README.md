@@ -54,8 +54,12 @@ cd ~/vexa-stack
 
 ```bash
 sudo mkdir -p /mnt/zurg /mnt/plex_symlinks
-sudo chmod 755 /mnt/zurg /mnt/plex_symlinks
+sudo chown -R 1001:1001 /mnt/plex_symlinks
+sudo chmod 775 /mnt/plex_symlinks
+sudo chmod 755 /mnt/zurg
 ```
+
+If your host user is not UID/GID `1001`, set matching values in `.env` (step 6) using `APP_UID` and `APP_GID`.
 
 ### 3) 🐳 Create `docker-compose.yml`
 
@@ -193,6 +197,8 @@ Create `~/vexa-stack/.env`:
 SESSION_SECRET=replace_with_a_long_random_secret_min_32_chars
 PLEX_CLAIM=
 VEXA_IMAGE=ghcr.io/ms2620/vexa:latest
+APP_UID=1001
+APP_GID=1001
 # SECURE_COOKIES=true
 ```
 
@@ -201,6 +207,7 @@ Notes:
 - `SESSION_SECRET` is required (32+ chars)
 - `PLEX_CLAIM` is only needed when claiming a fresh Plex container
 - Keep `VEXA_IMAGE` default unless pinning a specific tag
+- Set `APP_UID` / `APP_GID` to the owner of `/mnt/plex_symlinks` on your host
 
 ### 7) 🏁 Start Vexa
 
@@ -260,6 +267,35 @@ docker compose up -d
 - Ensure `/mnt/zurg` is correctly mounted by rclone.
 - Ensure `/mnt/plex_symlinks` is writable by the app container.
 - Ensure the `DEBRID_MOUNT` path exists within the container.
+
+### ❗ `EACCES: permission denied, mkdir '/mnt/plex_symlinks/...'`
+
+This usually means the container user does not match the host directory owner.
+
+- Set `APP_UID` and `APP_GID` in `.env` to match the owner of `/mnt/plex_symlinks`.
+- Ensure `/mnt/plex_symlinks` is owned/writable by that same UID/GID.
+
+Example fix on Linux host:
+
+```bash
+id
+# use your uid/gid values below
+sudo chown -R <uid>:<gid> /mnt/plex_symlinks
+sudo chmod 775 /mnt/plex_symlinks
+```
+
+Then set in `.env`:
+
+```env
+APP_UID=<uid>
+APP_GID=<gid>
+```
+
+Apply changes:
+
+```bash
+docker compose up -d --force-recreate app
+```
 
 ---
 

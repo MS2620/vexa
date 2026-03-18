@@ -44,17 +44,27 @@ export default function MediaCard({
   const date = media.release_date || media.first_air_date || media.air_date;
   const year = date ? new Date(date).getFullYear() : "";
 
-  const imageUrl = media.poster_path
-    ? media.poster_path.startsWith("http")
-      ? media.poster_path
-      : `https://image.tmdb.org/t/p/w500${media.poster_path}`
-    : null;
+  const toTmdbPosterUrl = (posterPath?: string | null) => {
+    if (!posterPath) return null;
+
+    if (posterPath.startsWith("/")) {
+      return `https://image.tmdb.org/t/p/w500${posterPath}`;
+    }
+
+    if (/^https?:\/\/image\.tmdb\.org\//i.test(posterPath)) {
+      return posterPath.replace(/^http:\/\//i, "https://");
+    }
+
+    return null;
+  };
+
+  const imageUrl = toTmdbPosterUrl(media.poster_path);
 
   if (type === "wide") {
     return (
       <div
         onClick={handleClick}
-        className="min-w[280px sm:min-w-300px md:min-w-340px bg-[#161824]/60 backdrop-blur-md border border-white/5 rounded-2xl p-4 flex gap-4 shrink-0 hover:bg-white/5 hover:border-white/10 hover:shadow-xl hover:shadow-indigo-500/5 transition-transform duration-300 hover:scale-105 hover:-translate-y-1 cursor-pointer snap-start z-10 hover:z-20"
+        className="min-w-70 sm:min-w-75 md:min-w-85 bg-[#161824]/60 backdrop-blur-md border border-white/5 rounded-2xl p-4 flex gap-4 shrink-0 hover:bg-white/5 hover:border-white/10 hover:shadow-xl hover:shadow-indigo-500/5 transition-transform duration-300 hover:scale-105 hover:-translate-y-1 cursor-pointer snap-start z-10 hover:z-20"
       >
         <div className="flex-1 flex flex-col relative z-10">
           <span className="text-xs font-medium text-indigo-300 mb-1 flex items-center gap-1.5">
@@ -124,7 +134,7 @@ export default function MediaCard({
   return (
     <div
       onClick={handleClick}
-      className={`relative cursor-pointer snap-start transition-transform duration-300 hover:scale-105 hover:-translate-y-1 z-10 hover:z-20 ${className || "w-140px sm:w-155px md:w-180px shrink-0"}`}
+      className={`relative cursor-pointer snap-start transition-transform duration-300 hover:scale-105 hover:-translate-y-1 z-10 hover:z-20 ${className || "w-35 sm:w-38.75 md:w-45 shrink-0"}`}
     >
       <div className="relative w-full aspect-2/3 bg-[#161824] rounded-2xl overflow-hidden shadow-lg shadow-black/20 hover:shadow-indigo-500/20 transition-all duration-300 ring-1 ring-white/5 hover:ring-indigo-500/50">
         {/* Type Badge */}

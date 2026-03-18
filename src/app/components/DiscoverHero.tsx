@@ -6,16 +6,20 @@ import Image from "next/image";
 interface DiscoverHeroProps {
   heroItem: any;
   onDetails: () => void;
+  className?: string;
 }
 
 export default function DiscoverHero({
   heroItem,
   onDetails,
+  className = "-mt-12 md:mt-2 lg:mt-0",
 }: DiscoverHeroProps) {
   if (!heroItem) return null;
 
   return (
-    <div className="relative w-full aspect-2/1 md:aspect-2.5/1 lg:aspect-3/1 rounded-3xl overflow-hidden shadow-2xl shadow-black/50 group -mt-12 md:mt-2  lg:mt-0">
+    <div
+      className={`relative w-full aspect-2/1 md:aspect-2.5/1 lg:aspect-3/1 rounded-3xl overflow-hidden shadow-2xl shadow-black/50 group ${className}`}
+    >
       <div className="absolute inset-0">
         <Image
           width={1280}
