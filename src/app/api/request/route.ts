@@ -34,7 +34,13 @@ export async function POST(req: Request) {
 
     const session = await getSession();
     const requestedBy = session.username || "unknown";
-    const isAdmin = session.role === "admin";
+    const currentUser = session.username
+      ? await db.get<{ role?: string }>(
+          "SELECT role FROM users WHERE username = ? LIMIT 1",
+          [session.username],
+        )
+      : null;
+    const isAdmin = (currentUser?.role || session.role) === "admin";
 
     // ✅ Stop here for non-admins — save to DB and return pending
     // Don't touch RD at all until an admin approves
@@ -303,11 +309,6 @@ export async function POST(req: Request) {
         1,
       ],
     );
-
-    // Only send to RD if approved
-    if (!isAdmin) {
-      return NextResponse.json({ success: true, pending: true });
-    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

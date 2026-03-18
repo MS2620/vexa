@@ -21,7 +21,10 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const db = await openDb();
-    const req = await db.get("SELECT * FROM requests WHERE id = ?", [id]);
+    const req = await db.get(
+      "SELECT * FROM requests WHERE id = ? AND status = 'Pending Approval' AND approved = 0",
+      [id],
+    );
     if (!req) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const settings = await db.get(
@@ -144,7 +147,18 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const db = await openDb();
-    await db.run(`UPDATE requests SET status = 'Denied' WHERE id = ?`, [id]);
+    const result = await db.run(
+      `UPDATE requests SET status = 'Denied' WHERE id = ? AND status = 'Pending Approval' AND approved = 0`,
+      [id],
+    );
+
+    if (!result.changes) {
+      return NextResponse.json(
+        { error: "Request is no longer pending approval" },
+        { status: 409 },
+      );
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";

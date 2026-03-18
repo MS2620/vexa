@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, Clock, Filter, SortDesc } from "lucide-react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import MediaCard from "../components/MediaCard";
 
 type Request = {
@@ -22,19 +23,33 @@ export default function RequestsPage() {
   const [pendingApproval, setPendingApproval] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
 
   const fetchRequests = useCallback(async () => {
     try {
       setSyncing(true);
 
-      const [pendingRes] = await Promise.all([
-        fetch("/api/dashboard/requests?status=pending"),
-        fetch("/api/request/sync", { method: "POST" }),
-      ]);
+      const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+      const meData = await meRes.json();
+      const admin = meData?.role === "admin";
+      setIsAdmin(admin);
 
-      const pendingData = await pendingRes.json();
-      setPendingApproval(pendingData.results || []);
+      const requestCalls = [fetch("/api/request/sync", { method: "POST" })];
+
+      if (admin) {
+        requestCalls.unshift(fetch("/api/dashboard/requests?status=pending"));
+      }
+
+      const responses = await Promise.all(requestCalls);
+
+      if (admin) {
+        const pendingData = await responses[0].json();
+        setPendingApproval(pendingData.results || []);
+      } else {
+        setPendingApproval([]);
+      }
+
       setSyncing(false);
 
       const res = await fetch("/api/dashboard/requests");
@@ -88,7 +103,7 @@ export default function RequestsPage() {
       ) : (
         <div className="space-y-12">
           {/* Pending Approval Section */}
-          {pendingApproval.length > 0 && (
+          {isAdmin && pendingApproval.length > 0 && (
             <div>
               <h2 className="text-lg font-semibold text-yellow-400 mb-4 flex items-center gap-2 px-1">
                 ⏳ Pending Approval
@@ -127,9 +142,20 @@ export default function RequestsPage() {
                       <div className="flex gap-2 mt-auto">
                         <button
                           onClick={async () => {
-                            await fetch(`/api/request/${req.id}/approve`, {
-                              method: "POST",
-                            });
+                            const response = await fetch(
+                              `/api/request/${req.id}/approve`,
+                              {
+                                method: "POST",
+                              },
+                            );
+                            const body = await response
+                              .json()
+                              .catch(() => ({}));
+                            if (!response.ok) {
+                              toast.error(body?.error || "Approval failed");
+                              return;
+                            }
+                            toast.success("Request approved");
                             fetchRequests();
                           }}
                           className="flex-1 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 rounded-lg text-xs font-bold uppercase tracking-wide transition-all hover:shadow-lg hover:shadow-green-900/20"
@@ -138,9 +164,20 @@ export default function RequestsPage() {
                         </button>
                         <button
                           onClick={async () => {
-                            await fetch(`/api/request/${req.id}/approve`, {
-                              method: "DELETE",
-                            });
+                            const response = await fetch(
+                              `/api/request/${req.id}/approve`,
+                              {
+                                method: "DELETE",
+                              },
+                            );
+                            const body = await response
+                              .json()
+                              .catch(() => ({}));
+                            if (!response.ok) {
+                              toast.error(body?.error || "Deny failed");
+                              return;
+                            }
+                            toast.success("Request denied");
                             fetchRequests();
                           }}
                           className="flex-1 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg text-xs font-bold uppercase tracking-wide transition-all hover:shadow-lg hover:shadow-red-900/20"

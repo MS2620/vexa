@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { openDb } from "@/lib/db";
+import { getSession } from "@/lib/session";
 
 export async function GET(req: Request) {
   try {
@@ -8,6 +9,11 @@ export async function GET(req: Request) {
     const statusFilter = url.searchParams.get("status");
 
     if (statusFilter === "pending") {
+      const session = await getSession();
+      if (session.role !== "admin") {
+        return NextResponse.json({ results: [] });
+      }
+
       const pendingReqs = await db.all(`
         SELECT id, tmdb_id, media_type, title, requested_by, requested_at
         FROM requests 
@@ -16,16 +22,8 @@ export async function GET(req: Request) {
         LIMIT 100
       `);
 
-      const automationLogs = await db.all(`
-        SELECT id, message, context, timestamp
-        FROM logs
-        WHERE message LIKE '[automation] Added %'
-        ORDER BY timestamp DESC
-        LIMIT 100
-      `);
-
       const requestNotifications = (pendingReqs || []).map((row: any) => ({
-        id: `request-${row.id}`,
+        id: row.id,
         type: "request",
         title: row.title,
         subtitle: `Requested by ${row.requested_by || "Unknown"}`,
@@ -36,42 +34,7 @@ export async function GET(req: Request) {
             : "/requests",
       }));
 
-      const automationNotifications = (automationLogs || [])
-        .map((row: any) => ({
-          ...(function () {
-            try {
-              const parsed = row.context ? JSON.parse(row.context) : null;
-              return {
-                tmdbId: parsed?.tmdbId,
-                season: parsed?.season,
-                episode: parsed?.episode,
-              };
-            } catch {
-              return {
-                tmdbId: null,
-                season: null,
-                episode: null,
-              };
-            }
-          })(),
-          id: `automation-${row.id}`,
-          type: "automation",
-          title:
-            row.message?.replace(/^\[automation\]\s*/i, "") ||
-            "Automation update",
-          subtitle: "Auto-scheduler added a new episode",
-          created_at: row.timestamp,
-        }))
-        .map((row: any) => ({
-          id: row.id,
-          type: row.type,
-          title: row.title,
-          subtitle: row.subtitle,
-          created_at: row.created_at,
-          target_path: row.tmdbId ? `/media/tv/${row.tmdbId}` : "/requests",
-        }));
-
-      const results = [...requestNotifications, ...automationNotifications]
+      const results = [...requestNotifications]
         .sort((a, b) => {
           const aTime = new Date(a.created_at || 0).getTime();
           const bTime = new Date(b.created_at || 0).getTime();
