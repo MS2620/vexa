@@ -15,6 +15,7 @@ export default function LogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -37,6 +38,21 @@ export default function LogsPage() {
     // Auto refresh every 5 seconds
     const interval = setInterval(fetchLogs, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        setIsAdmin(data.role === "admin");
+      } catch {
+        setIsAdmin(false);
+      }
+    };
+
+    fetchCurrentUser();
   }, []);
 
   const clearLogs = async () => {
@@ -126,14 +142,18 @@ export default function LogsPage() {
             <Download className="w-4 h-4" />
             Download .txt
           </button>
-          <button
-            onClick={clearLogs}
-            disabled={clearing}
-            className="flex items-center justify-center gap-2 bg-[#161824] hover:bg-red-500/10 border border-white/5 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <Trash2 className={`w-4 h-4 ${clearing ? "animate-pulse" : ""}`} />
-            Clear All
-          </button>
+          {isAdmin && (
+            <button
+              onClick={clearLogs}
+              disabled={clearing}
+              className="flex items-center justify-center gap-2 bg-[#161824] hover:bg-red-500/10 border border-white/5 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <Trash2
+                className={`w-4 h-4 ${clearing ? "animate-pulse" : ""}`}
+              />
+              Clear All
+            </button>
+          )}
           <button
             onClick={fetchLogs}
             disabled={loading}
