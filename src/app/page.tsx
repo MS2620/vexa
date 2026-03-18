@@ -27,6 +27,32 @@ type BeforeInstallPromptEvent = Event & {
 
 const INSTALL_PROMPT_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
+function isIosDevice() {
+  if (typeof window === "undefined") return false;
+
+  const userAgent = window.navigator.userAgent || "";
+  const iPadOS13Up =
+    navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+
+  return /iPhone|iPad|iPod/i.test(userAgent) || iPadOS13Up;
+}
+
+function isStandaloneDisplayMode() {
+  if (typeof window === "undefined") return false;
+
+  const mediaStandalone = window.matchMedia(
+    "(display-mode: standalone)",
+  ).matches;
+  const navigatorStandalone =
+    typeof (window.navigator as Navigator & { standalone?: boolean })
+      .standalone === "boolean" &&
+    Boolean(
+      (window.navigator as Navigator & { standalone?: boolean }).standalone,
+    );
+
+  return mediaStandalone || navigatorStandalone;
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const normalized = (base64String + padding)
@@ -51,6 +77,7 @@ export default function Dashboard() {
   const [deferredInstallPrompt, setDeferredInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
   const [isEnablingNotifications, setIsEnablingNotifications] = useState(false);
   const router = useRouter();
@@ -81,6 +108,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     let unmounted = false;
+    const onIos = isIosDevice();
+    const standalone = isStandaloneDisplayMode();
 
     const isInstallPromptSnoozed = () => {
       const dismissedAt = Number(
@@ -90,8 +119,26 @@ export default function Dashboard() {
       return Date.now() - dismissedAt < INSTALL_PROMPT_SNOOZE_MS;
     };
 
-    const shouldPromptNotifications = () => {
+    const isIosInstallPromptSnoozed = () => {
+      const dismissedAt = Number(
+        localStorage.getItem("vexa-ios-install-dismissed-at") || "0",
+      );
+      if (!dismissedAt) return false;
+      return Date.now() - dismissedAt < INSTALL_PROMPT_SNOOZE_MS;
+    };
+
+    const canUsePush = () => {
+      if (!window.isSecureContext) return false;
       if (!("Notification" in window)) return false;
+      if (!("serviceWorker" in navigator)) return false;
+      if (!("PushManager" in window)) return false;
+
+      if (onIos && !standalone) return false;
+      return true;
+    };
+
+    const shouldPromptNotifications = () => {
+      if (!canUsePush()) return false;
       if (Notification.permission !== "default") return false;
       return localStorage.getItem("vexa-notification-dismissed") !== "1";
     };
@@ -131,7 +178,10 @@ export default function Dashboard() {
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     window.addEventListener("appinstalled", onAppInstalled);
 
-    if (!window.matchMedia("(display-mode: standalone)").matches) {
+    if (onIos && !standalone && !isIosInstallPromptSnoozed()) {
+      setShowIosInstallPrompt(true);
+      setShowNotificationPrompt(false);
+    } else if (!standalone) {
       if (shouldPromptNotifications()) {
         setShowNotificationPrompt(true);
       }
@@ -281,38 +331,70 @@ export default function Dashboard() {
         </div>
       )}
 
-      {showNotificationPrompt && !showInstallPrompt && (
-        <div className="mx-4 mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 md:mx-0 md:mt-0">
+      {showIosInstallPrompt && !showInstallPrompt && (
+        <div className="mx-4 mt-4 rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4 md:mx-0 md:mt-0">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-semibold text-white">
-                Enable Notifications
+                Install Vexa on iPhone/iPad
               </p>
-              <p className="text-xs text-emerald-200/90">
-                Get alerts when new movies/episodes are added to your library.
+              <p className="text-xs text-indigo-200/90">
+                In Safari: tap Share, then Add to Home Screen. Open Vexa from
+                your Home Screen to enable push notifications.
               </p>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  localStorage.setItem("vexa-notification-dismissed", "1");
-                  setShowNotificationPrompt(false);
+                  localStorage.setItem(
+                    "vexa-ios-install-dismissed-at",
+                    String(Date.now()),
+                  );
+                  setShowIosInstallPrompt(false);
                 }}
                 className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
               >
                 Later
               </button>
-              <button
-                onClick={handleEnableNotifications}
-                disabled={isEnablingNotifications}
-                className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
-              >
-                {isEnablingNotifications ? "Enabling..." : "Enable"}
-              </button>
             </div>
           </div>
         </div>
       )}
+
+      {showNotificationPrompt &&
+        !showInstallPrompt &&
+        !showIosInstallPrompt && (
+          <div className="mx-4 mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 md:mx-0 md:mt-0">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-white">
+                  Enable Notifications
+                </p>
+                <p className="text-xs text-emerald-200/90">
+                  Get alerts when new movies/episodes are added to your library.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    localStorage.setItem("vexa-notification-dismissed", "1");
+                    setShowNotificationPrompt(false);
+                  }}
+                  className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
+                >
+                  Later
+                </button>
+                <button
+                  onClick={handleEnableNotifications}
+                  disabled={isEnablingNotifications}
+                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+                >
+                  {isEnablingNotifications ? "Enabling..." : "Enable"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       <DiscoverHero
         heroItem={heroItem}
