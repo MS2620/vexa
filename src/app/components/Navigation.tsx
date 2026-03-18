@@ -9,7 +9,6 @@ import {
   Users,
   Settings,
   Play,
-  Menu,
   X,
   Search,
   LogOut,
@@ -26,6 +25,8 @@ export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [mobileSearchQuery, setMobileSearchQuery] = useState("");
   const [currentUser, setCurrentUser] = useState<{
     username: string;
     role: string;
@@ -40,7 +41,14 @@ export default function Navigation() {
   // Close mobile menu on route change
   useEffect(() => {
     setIsMobileMenuOpen(false);
+    setIsMobileSearchOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!isMobileSearchOpen) {
+      setMobileSearchQuery("");
+    }
+  }, [isMobileSearchOpen]);
 
   useEffect(() => {
     const loadCurrentUser = async () => {
@@ -78,6 +86,14 @@ export default function Navigation() {
   const isActivePath = (path: string) => {
     if (path === "/") return pathname === "/";
     return pathname.startsWith(path);
+  };
+
+  const submitMobileSearch = () => {
+    const query = mobileSearchQuery.trim();
+    if (!query) return;
+
+    router.push(`/search?q=${encodeURIComponent(query)}`);
+    setIsMobileSearchOpen(false);
   };
 
   const username = currentUser?.username || "User";
@@ -196,6 +212,13 @@ export default function Navigation() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setIsMobileSearchOpen(true)}
+            className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-gray-400 border border-white/5 hover:bg-white/10"
+            aria-label="Open search"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+          <button
             onClick={handleLogout}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-gray-400 border border-white/5 hover:bg-white/10"
           >
@@ -209,6 +232,51 @@ export default function Navigation() {
           </Link>
         </div>
       </header>
+
+      {/* MOBILE SEARCH OVERLAY */}
+      {isMobileSearchOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-60 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setIsMobileSearchOpen(false)}
+        >
+          <div
+            className="w-full max-w-md bg-[#161824] border border-white/10 rounded-xl p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 border border-white/10 rounded-lg px-3 py-2 bg-[#0f111a]">
+              <Search className="w-4 h-4 text-gray-500" />
+              <input
+                autoFocus
+                type="text"
+                value={mobileSearchQuery}
+                onChange={(e) => setMobileSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    submitMobileSearch();
+                  }
+                }}
+                placeholder="Search movies, series, people..."
+                className="flex-1 bg-transparent text-white placeholder-gray-500 text-sm focus:outline-none"
+              />
+              <button
+                onClick={() => setIsMobileSearchOpen(false)}
+                className="text-gray-400 hover:text-white"
+                aria-label="Close search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={submitMobileSearch}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium"
+              >
+                Search
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MOBILE BOTTOM NAV */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0f111a]/90 backdrop-blur-xl border-t border-white/10 pb-safe safe-area-pb">
