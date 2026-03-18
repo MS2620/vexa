@@ -7,11 +7,14 @@ import {
   AlertCircle,
   CheckCircle,
   Info,
+  Download,
+  Trash2,
 } from "lucide-react";
 
 export default function LogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clearing, setClearing] = useState(false);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -35,6 +38,50 @@ export default function LogsPage() {
     const interval = setInterval(fetchLogs, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const clearLogs = async () => {
+    const confirmed = window.confirm(
+      "Clear all logs? This cannot be undone.",
+    );
+    if (!confirmed) return;
+
+    setClearing(true);
+    try {
+      const res = await fetch("/api/logs", { method: "DELETE" });
+      if (res.ok) {
+        setLogs([]);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to clear logs");
+      }
+    } catch {
+      alert("Failed to clear logs");
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const downloadLogs = () => {
+    const lines = logs.map((log) => {
+      const timestamp = new Date(log.timestamp).toISOString();
+      const level = String(log.level || "info").toUpperCase();
+      const message = String(log.message || "");
+      const context = log.context ? ` | context: ${log.context}` : "";
+      return `[${timestamp}] [${level}] ${message}${context}`;
+    });
+
+    const content = lines.join("\n") || "No logs found.";
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    anchor.href = url;
+    anchor.download = `vexa-logs-${stamp}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const getLevelIcon = (level: string) => {
     switch (level) {
@@ -73,14 +120,31 @@ export default function LogsPage() {
             Monitor live background processes and request stages
           </p>
         </div>
-        <button
-          onClick={fetchLogs}
-          disabled={loading}
-          className="flex items-center justify-center gap-2 bg-[#161824] hover:bg-white/5 border border-white/5 px-4 py-2 rounded-lg transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={downloadLogs}
+            className="flex items-center justify-center gap-2 bg-[#161824] hover:bg-white/5 border border-white/5 px-4 py-2 rounded-lg transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download .txt
+          </button>
+          <button
+            onClick={clearLogs}
+            disabled={clearing}
+            className="flex items-center justify-center gap-2 bg-[#161824] hover:bg-red-500/10 border border-white/5 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <Trash2 className={`w-4 h-4 ${clearing ? "animate-pulse" : ""}`} />
+            Clear All
+          </button>
+          <button
+            onClick={fetchLogs}
+            disabled={loading}
+            className="flex items-center justify-center gap-2 bg-[#161824] hover:bg-white/5 border border-white/5 px-4 py-2 rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="bg-[#0f111a] border border-white/5 rounded-xl shadow-xl shadow-black/40 p-4 font-mono text-sm max-h-[70vh] overflow-y-auto w-full">

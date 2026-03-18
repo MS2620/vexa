@@ -30,6 +30,7 @@ export default function RootLayout({
     PendingRequestNotification[]
   >([]);
   const notificationRef = useRef<HTMLDivElement | null>(null);
+  const hasBootstrappedScheduler = useRef(false);
 
   const getPageTitle = (path: string) => {
     if (path.startsWith("/media/")) return "Media Details";
@@ -55,6 +56,14 @@ export default function RootLayout({
 
   useEffect(() => {
     document.title = `${getPageTitle(pathname)} • Vexa`;
+  }, [pathname]);
+
+  useEffect(() => {
+    if (hasBootstrappedScheduler.current) return;
+    if (pathname === "/login" || pathname === "/setup") return;
+
+    hasBootstrappedScheduler.current = true;
+    fetch("/api/setup/check", { cache: "no-store" }).catch(() => undefined);
   }, [pathname]);
 
   const fetchNotifications = async () => {
