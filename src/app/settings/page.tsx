@@ -20,6 +20,25 @@ type SyncItem = {
 };
 type SyncSummary = { synced: number; skipped: number; failed: number };
 
+type CollectionSyncItem = {
+  status: "created" | "updated" | "skipped" | "failed";
+  title: string;
+  reason?: string;
+};
+
+type CollectionSyncSummary = {
+  scannedMovies: number;
+  matchedCollections: number;
+  created: number;
+  updated: number;
+  skippedNoTmdb: number;
+  skippedNoCollection: number;
+  tmdbFailures: number;
+  plexFailures: number;
+  skipped: number;
+  failed: number;
+};
+
 export default function Settings() {
   const [formData, setFormData] = useState({
     tmdb_key: "",
@@ -50,17 +69,25 @@ export default function Settings() {
   const [syncTab, setSyncTab] = useState<"synced" | "skipped" | "failed">(
     "synced",
   );
-  const [collectionSyncing, setCollectionSyncing] = useState(false);
-  const [collectionSummary, setCollectionSummary] = useState<{
-    scannedMovies: number;
-    matchedCollections: number;
-    created: number;
-    updated: number;
-    skippedNoTmdb: number;
-    skippedNoCollection: number;
-    tmdbFailures: number;
-    plexFailures: number;
-  } | null>(null);
+  const [collectionSyncState, setCollectionSyncState] = useState<
+    "idle" | "running" | "done"
+  >("idle");
+  const [collectionProgress, setCollectionProgress] = useState({
+    current: 0,
+    total: 0,
+  });
+  const [collectionItems, setCollectionItems] = useState<CollectionSyncItem[]>(
+    [],
+  );
+  const [collectionSummary, setCollectionSummary] =
+    useState<CollectionSyncSummary | null>(null);
+  const [collectionError, setCollectionError] = useState<string | null>(null);
+  const [collectionTab, setCollectionTab] = useState<
+    "created" | "updated" | "skipped" | "failed"
+  >("created");
+  const [collectionPhaseLabel, setCollectionPhaseLabel] = useState(
+    "Preparing collection sync…",
+  );
 
   const handleSync = async () => {
     setSyncState("running");
@@ -147,26 +174,73 @@ export default function Settings() {
   };
 
   const handleCollectionSync = async () => {
-    setCollectionSyncing(true);
+    setCollectionSyncState("running");
+    setCollectionItems([]);
+    setCollectionProgress({ current: 0, total: 0 });
     setCollectionSummary(null);
+    setCollectionError(null);
+    setCollectionTab("created");
+    setCollectionPhaseLabel("Preparing collection sync…");
+    let hasStreamError = false;
 
     try {
       const response = await fetch("/api/plex/collections/sync", {
         method: "POST",
       });
-      const data = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
+      if (!response.ok || !response.body) {
+        const data = await response.json().catch(() => ({}));
+        setCollectionError(data?.error || "Collection sync failed");
+        setCollectionSyncState("done");
         toast.error(data?.error || "Collection sync failed");
         return;
       }
 
-      setCollectionSummary(data.summary || null);
-      toast.success("Collection sync complete");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        for (const line of decoder.decode(value).split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "phase") {
+              setCollectionPhaseLabel(event.message || "Syncing collections…");
+            } else if (event.type === "total") {
+              setCollectionProgress({ current: 0, total: event.count || 0 });
+            } else if (event.type === "progress") {
+              setCollectionProgress({
+                current: event.current || 0,
+                total: event.total || 0,
+              });
+            } else if (event.type === "item") {
+              setCollectionItems((previous) => [...previous, event]);
+            } else if (event.type === "done") {
+              setCollectionSummary(event);
+              setCollectionSyncState("done");
+            } else if (event.type === "error") {
+              hasStreamError = true;
+              setCollectionError(event.error || "Collection sync failed");
+              setCollectionSyncState("done");
+            }
+          } catch {
+            // malformed chunk
+          }
+        }
+      }
+
+      if (!hasStreamError) {
+        setCollectionSyncState("done");
+        toast.success("Collection sync complete");
+      }
     } catch {
+      setCollectionError("Collection sync failed");
+      setCollectionSyncState("done");
       toast.error("Collection sync failed");
-    } finally {
-      setCollectionSyncing(false);
     }
   };
 
@@ -655,7 +729,7 @@ export default function Settings() {
       </div>
 
       {/* ── PLEX COLLECTION SYNC ── */}
-      <div className="bg-[#161824] border border-white/5 rounded-xl p-6 md:p-8 space-y-4 shadow-lg shadow-black/20">
+      <div className="bg-[#161824] border border-white/5 rounded-xl p-6 md:p-8 space-y-6 shadow-lg shadow-black/20">
         <div>
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-1">
             Plex Collection Sync
@@ -666,65 +740,158 @@ export default function Settings() {
           </p>
         </div>
 
+        {collectionError && (
+          <div className="flex items-center gap-2 text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-4 py-2.5">
+            <XCircle className="w-4 h-4 shrink-0" />
+            {collectionError}
+          </div>
+        )}
+
+        {collectionSyncState === "running" && collectionProgress.total > 0 && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>{collectionPhaseLabel}</span>
+              <span>
+                {collectionProgress.current} / {collectionProgress.total}
+              </span>
+            </div>
+            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-indigo-500 transition-all duration-300"
+                style={{
+                  width: `${
+                    collectionProgress.total > 0
+                      ? (collectionProgress.current /
+                          collectionProgress.total) *
+                        100
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
         {collectionSummary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
-              <p className="text-gray-500">Scanned</p>
-              <p className="text-white font-semibold">
-                {collectionSummary.scannedMovies}
-              </p>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="text-green-400">
+              ✓ {collectionSummary.created} created
+            </span>
+            <span className="text-indigo-300">
+              ↻ {collectionSummary.updated} updated
+            </span>
+            <span className="text-yellow-400">
+              ⊘ {collectionSummary.skipped} skipped
+            </span>
+            <span className="text-red-400">
+              ✗ {collectionSummary.failed} failed
+            </span>
+            <span className="text-gray-400">
+              ({collectionSummary.scannedMovies} scanned,{" "}
+              {collectionSummary.matchedCollections} matched)
+            </span>
+          </div>
+        )}
+
+        {collectionItems.length > 0 && (
+          <div className="rounded-lg bg-[#0f111a] border border-white/5 overflow-hidden">
+            <div className="flex border-b border-white/5">
+              {(
+                [
+                  { key: "created", label: "Created", color: "text-green-400" },
+                  {
+                    key: "updated",
+                    label: "Updated",
+                    color: "text-indigo-300",
+                  },
+                  {
+                    key: "skipped",
+                    label: "Skipped",
+                    color: "text-yellow-400",
+                  },
+                  { key: "failed", label: "Failed", color: "text-red-400" },
+                ] as const
+              ).map(({ key, label, color }) => {
+                const count = collectionItems.filter(
+                  (item) => item.status === key,
+                ).length;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setCollectionTab(key)}
+                    className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors ${
+                      collectionTab === key
+                        ? `bg-[#161824] border-b-2 ${
+                            key === "created"
+                              ? "border-green-500"
+                              : key === "updated"
+                                ? "border-indigo-400"
+                                : key === "skipped"
+                                  ? "border-yellow-500"
+                                  : "border-red-500"
+                          } ${color}`
+                        : "text-gray-500 hover:text-gray-300"
+                    }`}
+                  >
+                    {label}{" "}
+                    <span
+                      className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
+                        collectionTab === key ? "bg-gray-700" : "bg-gray-800"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
-              <p className="text-gray-500">Collections Matched</p>
-              <p className="text-white font-semibold">
-                {collectionSummary.matchedCollections}
-              </p>
-            </div>
-            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
-              <p className="text-gray-500">Created</p>
-              <p className="text-green-400 font-semibold">
-                {collectionSummary.created}
-              </p>
-            </div>
-            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
-              <p className="text-gray-500">Updated</p>
-              <p className="text-indigo-300 font-semibold">
-                {collectionSummary.updated}
-              </p>
-            </div>
-            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
-              <p className="text-gray-500">No TMDB GUID</p>
-              <p className="text-yellow-300 font-semibold">
-                {collectionSummary.skippedNoTmdb}
-              </p>
-            </div>
-            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
-              <p className="text-gray-500">No TMDB Collection</p>
-              <p className="text-yellow-300 font-semibold">
-                {collectionSummary.skippedNoCollection}
-              </p>
-            </div>
-            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
-              <p className="text-gray-500">TMDB Failures</p>
-              <p className="text-red-400 font-semibold">
-                {collectionSummary.tmdbFailures}
-              </p>
-            </div>
-            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
-              <p className="text-gray-500">Plex Failures</p>
-              <p className="text-red-400 font-semibold">
-                {collectionSummary.plexFailures}
-              </p>
+
+            <div className="max-h-64 overflow-y-auto p-3 space-y-1">
+              {collectionItems.filter((item) => item.status === collectionTab)
+                .length === 0 ? (
+                <p className="text-xs text-gray-600 text-center py-4">
+                  No {collectionTab} items yet
+                </p>
+              ) : (
+                collectionItems
+                  .filter((item) => item.status === collectionTab)
+                  .map((item, index) => (
+                    <div key={index} className="flex items-start gap-2 text-xs">
+                      {item.status === "created" && (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-400 mt-0.5 shrink-0" />
+                      )}
+                      {item.status === "updated" && (
+                        <RefreshCw className="w-3.5 h-3.5 text-indigo-300 mt-0.5 shrink-0" />
+                      )}
+                      {item.status === "skipped" && (
+                        <SkipForward className="w-3.5 h-3.5 text-yellow-400 mt-0.5 shrink-0" />
+                      )}
+                      {item.status === "failed" && (
+                        <XCircle className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <span className="text-gray-300 block truncate">
+                          {item.title}
+                        </span>
+                        {item.reason && (
+                          <span className="text-gray-600 block truncate">
+                            {item.reason}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+              )}
             </div>
           </div>
         )}
 
         <button
           onClick={handleCollectionSync}
-          disabled={collectionSyncing}
+          disabled={collectionSyncState === "running"}
           className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors shadow-lg shadow-indigo-500/25"
         >
-          {collectionSyncing ? (
+          {collectionSyncState === "running" ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" /> Syncing Collections…
             </>
