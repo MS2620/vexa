@@ -155,6 +155,7 @@ export default function RootLayout({
           <link rel="icon" href="/favicon.ico" sizes="any" />
           <link rel="shortcut icon" href="/favicon.ico" />
           <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+          <link rel="manifest" href="/manifest.webmanifest" />
         </head>
         <body className="bg-[#0f111a] text-white font-sans">
           {children}
@@ -179,6 +180,7 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="shortcut icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.webmanifest" />
       </head>
       <body className="bg-[#0f111a] text-white font-sans min-h-screen">
         <Navigation />

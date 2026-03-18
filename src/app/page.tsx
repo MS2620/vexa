@@ -25,6 +25,8 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
+const INSTALL_PROMPT_SNOOZE_MS = 24 * 60 * 60 * 1000;
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const normalized = (base64String + padding)
@@ -80,6 +82,14 @@ export default function Dashboard() {
   useEffect(() => {
     let unmounted = false;
 
+    const isInstallPromptSnoozed = () => {
+      const dismissedAt = Number(
+        localStorage.getItem("vexa-install-dismissed-at") || "0",
+      );
+      if (!dismissedAt) return false;
+      return Date.now() - dismissedAt < INSTALL_PROMPT_SNOOZE_MS;
+    };
+
     const shouldPromptNotifications = () => {
       if (!("Notification" in window)) return false;
       if (Notification.permission !== "default") return false;
@@ -103,9 +113,7 @@ export default function Dashboard() {
 
       setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
 
-      const installDismissed =
-        localStorage.getItem("vexa-install-dismissed") === "1";
-      if (!installDismissed) {
+      if (!isInstallPromptSnoozed()) {
         setShowInstallPrompt(true);
         setShowNotificationPrompt(false);
       }
@@ -245,7 +253,10 @@ export default function Dashboard() {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  localStorage.setItem("vexa-install-dismissed", "1");
+                  localStorage.setItem(
+                    "vexa-install-dismissed-at",
+                    String(Date.now()),
+                  );
                   setShowInstallPrompt(false);
                   if (
                     "Notification" in window &&
