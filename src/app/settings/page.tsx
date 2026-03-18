@@ -50,6 +50,17 @@ export default function Settings() {
   const [syncTab, setSyncTab] = useState<"synced" | "skipped" | "failed">(
     "synced",
   );
+  const [collectionSyncing, setCollectionSyncing] = useState(false);
+  const [collectionSummary, setCollectionSummary] = useState<{
+    scannedMovies: number;
+    matchedCollections: number;
+    created: number;
+    updated: number;
+    skippedNoTmdb: number;
+    skippedNoCollection: number;
+    tmdbFailures: number;
+    plexFailures: number;
+  } | null>(null);
 
   const handleSync = async () => {
     setSyncState("running");
@@ -133,6 +144,30 @@ export default function Settings() {
         error: "Failed to save configuration",
       },
     );
+  };
+
+  const handleCollectionSync = async () => {
+    setCollectionSyncing(true);
+    setCollectionSummary(null);
+
+    try {
+      const response = await fetch("/api/plex/collections/sync", {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        toast.error(data?.error || "Collection sync failed");
+        return;
+      }
+
+      setCollectionSummary(data.summary || null);
+      toast.success("Collection sync complete");
+    } catch {
+      toast.error("Collection sync failed");
+    } finally {
+      setCollectionSyncing(false);
+    }
   };
 
   return (
@@ -617,6 +652,88 @@ export default function Settings() {
             <Save className="w-5 h-5" /> Save Configuration
           </button>
         </div>
+      </div>
+
+      {/* ── PLEX COLLECTION SYNC ── */}
+      <div className="bg-[#161824] border border-white/5 rounded-xl p-6 md:p-8 space-y-4 shadow-lg shadow-black/20">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-1">
+            Plex Collection Sync
+          </h2>
+          <p className="text-sm text-gray-500">
+            Scan your Plex movie library, match TMDB collections, and
+            create/update Plex collections automatically.
+          </p>
+        </div>
+
+        {collectionSummary && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
+              <p className="text-gray-500">Scanned</p>
+              <p className="text-white font-semibold">
+                {collectionSummary.scannedMovies}
+              </p>
+            </div>
+            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
+              <p className="text-gray-500">Collections Matched</p>
+              <p className="text-white font-semibold">
+                {collectionSummary.matchedCollections}
+              </p>
+            </div>
+            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
+              <p className="text-gray-500">Created</p>
+              <p className="text-green-400 font-semibold">
+                {collectionSummary.created}
+              </p>
+            </div>
+            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
+              <p className="text-gray-500">Updated</p>
+              <p className="text-indigo-300 font-semibold">
+                {collectionSummary.updated}
+              </p>
+            </div>
+            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
+              <p className="text-gray-500">No TMDB GUID</p>
+              <p className="text-yellow-300 font-semibold">
+                {collectionSummary.skippedNoTmdb}
+              </p>
+            </div>
+            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
+              <p className="text-gray-500">No TMDB Collection</p>
+              <p className="text-yellow-300 font-semibold">
+                {collectionSummary.skippedNoCollection}
+              </p>
+            </div>
+            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
+              <p className="text-gray-500">TMDB Failures</p>
+              <p className="text-red-400 font-semibold">
+                {collectionSummary.tmdbFailures}
+              </p>
+            </div>
+            <div className="bg-[#0f111a] border border-white/5 rounded-lg p-3">
+              <p className="text-gray-500">Plex Failures</p>
+              <p className="text-red-400 font-semibold">
+                {collectionSummary.plexFailures}
+              </p>
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={handleCollectionSync}
+          disabled={collectionSyncing}
+          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors shadow-lg shadow-indigo-500/25"
+        >
+          {collectionSyncing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Syncing Collections…
+            </>
+          ) : (
+            <>
+              <RefreshCw className="w-4 h-4" /> Sync Plex Collections
+            </>
+          )}
+        </button>
       </div>
 
       {/* ── LIBRARY SYNC ── */}
