@@ -9,6 +9,7 @@ import {
   Users,
   Settings,
   Play,
+  Menu,
   X,
   Search,
   LogOut,
@@ -212,11 +213,24 @@ export default function Navigation() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsMobileSearchOpen(true)}
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              setIsMobileSearchOpen(true);
+            }}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-gray-400 border border-white/5 hover:bg-white/10"
             aria-label="Open search"
           >
             <Search className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => {
+              setIsMobileSearchOpen(false);
+              setIsMobileMenuOpen(true);
+            }}
+            className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-gray-400 border border-white/5 hover:bg-white/10"
+            aria-label="Open navigation menu"
+          >
+            <Menu className="w-4 h-4" />
           </button>
           <button
             onClick={handleLogout}
@@ -273,6 +287,48 @@ export default function Navigation() {
               >
                 Search
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE NAV MENU */}
+      {isMobileMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-60 bg-black/60 backdrop-blur-sm flex items-start justify-end p-4 pt-20"
+          onClick={() => setIsMobileMenuOpen(false)}
+        >
+          <div
+            className="w-full max-w-xs bg-[#161824] border border-white/10 rounded-xl p-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-2 pb-2 mb-2 border-b border-white/10">
+              <p className="text-sm font-semibold text-white truncate">
+                {username}
+              </p>
+              <p className="text-xs text-gray-400 truncate">{roleLabel}</p>
+            </div>
+
+            <div className="space-y-1">
+              {adminItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = isActivePath(item.href);
+                return (
+                  <Link
+                    key={`mobile-admin-${item.href}`}
+                    href={item.href}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      isActive
+                        ? "text-white bg-white/10 border border-white/10"
+                        : "text-gray-300 hover:bg-white/5"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>
