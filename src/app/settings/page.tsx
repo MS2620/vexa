@@ -10,6 +10,8 @@ import {
   SkipForward,
 } from "lucide-react";
 
+const DEFAULT_VAPID_SUBJECT = "mailto:notifications@yourdomain.com";
+
 type SyncItem = {
   status: "synced" | "skipped" | "failed";
   filename: string;
@@ -28,6 +30,7 @@ export default function Settings() {
     plex_tv_lib_id: "",
     preferred_resolution: "1080p",
     preferred_language: "en",
+    vapid_subject: DEFAULT_VAPID_SUBJECT,
     smtp_host: "",
     smtp_port: "587",
     smtp_user: "",
@@ -95,7 +98,16 @@ export default function Settings() {
   useEffect(() => {
     fetch("/api/settings")
       .then((res) => res.json())
-      .then((data) => setFormData((prev) => ({ ...prev, ...data })));
+      .then((data) =>
+        setFormData((prev) => ({
+          ...prev,
+          ...data,
+          vapid_subject:
+            typeof data?.vapid_subject === "string" && data.vapid_subject.trim()
+              ? data.vapid_subject.trim()
+              : DEFAULT_VAPID_SUBJECT,
+        })),
+      );
   }, []);
 
   // Load live service status
@@ -483,6 +495,35 @@ export default function Settings() {
                 <option value="ko">Korean</option>
                 <option value="zh">Chinese</option>
               </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/5" />
+
+        {/* Push Notifications */}
+        <div>
+          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
+            Push Notifications
+          </h2>
+          <div className="grid grid-cols-1 gap-6">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                VAPID Subject
+              </label>
+              <input
+                type="text"
+                placeholder="mailto:you@domain.com"
+                value={formData.vapid_subject || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, vapid_subject: e.target.value })
+                }
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
+              />
+              <p className="mt-2 text-xs text-gray-500">
+                VAPID keys are generated automatically. Only this contact
+                subject is required for web-push.
+              </p>
             </div>
           </div>
         </div>

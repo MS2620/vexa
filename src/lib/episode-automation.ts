@@ -1,6 +1,7 @@
 import { openDb } from "@/lib/db";
 import { createSymlinks } from "@/lib/symlinks";
 import { addLog } from "@/lib/logger";
+import { notifyUsers } from "@/lib/notifications";
 
 type Stream = {
   infoHash?: string;
@@ -353,10 +354,23 @@ async function downloadInfoHash(
   );
 
   if (settings.plex_url && settings.plex_token && settings.plex_tv_lib_id) {
-    setTimeout(() => {
-      fetch(
-        `${settings.plex_url}/library/sections/${settings.plex_tv_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
-      ).catch(() => undefined);
+    setTimeout(async () => {
+      try {
+        const refreshRes = await fetch(
+          `${settings.plex_url}/library/sections/${settings.plex_tv_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
+        );
+
+        if (refreshRes.ok) {
+          await notifyUsers({
+            type: "automation",
+            title: `${title} added to library`,
+            body: `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")} was added and Plex refresh was triggered.`,
+            targetPath: `/media/tv/${tmdbId}`,
+          });
+        }
+      } catch {
+        // no-op
+      }
     }, 5000);
   }
 

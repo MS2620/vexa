@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { openDb } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { createSymlinks } from "@/lib/symlinks";
+import { notifyUsers } from "@/lib/notifications";
 
 type RDFile = {
   id: number;
@@ -24,7 +25,7 @@ export async function POST(
     if (!req) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const settings = await db.get(
-      "SELECT rd_token, plex_url, plex_token, plex_lib_id, tmdb_key FROM settings WHERE id = 1",
+      "SELECT rd_token, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, tmdb_key FROM settings WHERE id = 1",
     );
 
     const rdParams = new URLSearchParams();
@@ -95,10 +96,33 @@ export async function POST(
       [id],
     );
 
-    setTimeout(() => {
-      fetch(
-        `${settings.plex_url}/library/sections/${settings.plex_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
-      ).catch((e) => console.error("Plex refresh failed:", e));
+    setTimeout(async () => {
+      const mediaType = req.media_type === "tv" ? "tv" : "movie";
+      const sectionId =
+        mediaType === "tv" ? settings.plex_tv_lib_id : settings.plex_lib_id;
+
+      if (!settings.plex_url || !settings.plex_token || !sectionId) {
+        return;
+      }
+
+      try {
+        const refreshRes = await fetch(
+          `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
+        );
+
+        if (refreshRes.ok) {
+          await notifyUsers({
+            type: "request",
+            title: `${req.title} added to library`,
+            body: `${mediaType === "tv" ? "Series" : "Movie"} request was approved and Plex refresh was triggered.`,
+            targetPath: req.tmdb_id
+              ? `/media/${mediaType}/${req.tmdb_id}`
+              : "/requests",
+          });
+        }
+      } catch (e) {
+        console.error("Plex refresh failed:", e);
+      }
     }, 5000);
 
     return NextResponse.json({ success: true });

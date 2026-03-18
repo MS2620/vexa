@@ -4,6 +4,7 @@ import { openDb } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { createSymlinks } from "@/lib/symlinks";
 import { addLog } from "@/lib/logger";
+import { notifyUsers } from "@/lib/notifications";
 
 export async function POST(req: Request) {
   try {
@@ -257,9 +258,23 @@ export async function POST(req: Request) {
             "info",
             `Triggering Plex library scan for ${title} (${requestedMediaType})`,
           );
-          await fetch(
+          const refreshRes = await fetch(
             `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
-          ).catch((e) => console.error("Plex refresh failed:", e));
+          ).catch((e) => {
+            console.error("Plex refresh failed:", e);
+            return null;
+          });
+
+          if (refreshRes?.ok) {
+            await notifyUsers({
+              type: "request",
+              title: `${title} added to library`,
+              body: `${requestedMediaType === "tv" ? "Series" : "Movie"} request was added and Plex refresh was triggered.`,
+              targetPath: tmdbId
+                ? `/media/${requestedMediaType}/${tmdbId}`
+                : "/requests",
+            });
+          }
         }
       })
       .catch((e) => {

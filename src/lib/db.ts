@@ -117,6 +117,9 @@ export async function initDb() {
     `ALTER TABLE settings ADD COLUMN vapid_public_key TEXT DEFAULT ''`,
     `ALTER TABLE settings ADD COLUMN vapid_private_key TEXT DEFAULT ''`,
     `ALTER TABLE settings ADD COLUMN vapid_subject TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN vapid_public_key TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN vapid_private_key TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN vapid_subject TEXT DEFAULT ''`,
     // New migrations
     `ALTER TABLE requests ADD COLUMN approved INTEGER DEFAULT 1`,
     `ALTER TABLE users ADD COLUMN notify_email TEXT DEFAULT ''`,

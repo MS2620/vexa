@@ -8,11 +8,12 @@ import { Toaster } from "react-hot-toast";
 
 type PendingRequestNotification = {
   id: string | number;
-  type?: "request" | "automation";
+  type?: "request" | "automation" | "system";
   title: string;
   subtitle?: string;
   created_at?: string;
   target_path?: string;
+  is_read?: boolean;
 };
 
 export default function RootLayout({
@@ -29,6 +30,7 @@ export default function RootLayout({
   const [pendingNotifications, setPendingNotifications] = useState<
     PendingRequestNotification[]
   >([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const notificationRef = useRef<HTMLDivElement | null>(null);
   const hasBootstrappedScheduler = useRef(false);
 
@@ -69,16 +71,30 @@ export default function RootLayout({
   const fetchNotifications = async () => {
     try {
       setNotificationsLoading(true);
-      const res = await fetch("/api/dashboard/requests?status=pending", {
+      const res = await fetch("/api/notifications", {
         cache: "no-store",
       });
       const data = await res.json();
       setPendingNotifications(data.results || []);
+      setUnreadCount(Number(data.unreadCount || 0));
     } catch (error) {
       console.error("Failed to fetch notifications:", error);
       setPendingNotifications([]);
+      setUnreadCount(0);
     } finally {
       setNotificationsLoading(false);
+    }
+  };
+
+  const markNotificationRead = async (id: string | number) => {
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      // no-op
     }
   };
 
@@ -190,7 +206,7 @@ export default function RootLayout({
                 className="relative p-2.5 rounded-full hover:bg-white/5 transition-colors text-gray-400 hover:text-white border border-transparent hover:border-white/5"
               >
                 <Bell className="w-5 h-5" />
-                {pendingNotifications.length > 0 && (
+                {unreadCount > 0 && (
                   <span className="absolute top-2.5 right-3 w-2 h-2 rounded-full bg-indigo-500 border border-[#0f111a]"></span>
                 )}
               </button>
@@ -202,7 +218,7 @@ export default function RootLayout({
                       Notifications
                     </h3>
                     <span className="text-xs text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
-                      {pendingNotifications.length} alerts
+                      {pendingNotifications.length} items
                     </span>
                   </div>
 
@@ -220,6 +236,22 @@ export default function RootLayout({
                         <button
                           key={notification.id}
                           onClick={() => {
+                            if (
+                              String(notification.id).startsWith("notif-") &&
+                              !notification.is_read
+                            ) {
+                              setPendingNotifications((previous) =>
+                                previous.map((item) =>
+                                  item.id === notification.id
+                                    ? { ...item, is_read: true }
+                                    : item,
+                                ),
+                              );
+                              setUnreadCount((previous) =>
+                                previous > 0 ? previous - 1 : 0,
+                              );
+                              void markNotificationRead(notification.id);
+                            }
                             setIsNotificationsOpen(false);
                             router.push(
                               notification.target_path || "/requests",
@@ -235,12 +267,16 @@ export default function RootLayout({
                               className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap ${
                                 notification.type === "automation"
                                   ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
-                                  : "text-indigo-300 bg-indigo-500/10 border-indigo-500/20"
+                                  : notification.type === "system"
+                                    ? "text-gray-300 bg-gray-500/10 border-gray-500/20"
+                                    : "text-indigo-300 bg-indigo-500/10 border-indigo-500/20"
                               }`}
                             >
                               {notification.type === "automation"
                                 ? "Automation"
-                                : "Request"}
+                                : notification.type === "system"
+                                  ? "System"
+                                  : "Request"}
                             </span>
                           </div>
                           <p className="text-xs text-gray-400 mt-1">
@@ -258,7 +294,7 @@ export default function RootLayout({
                     }}
                     className="w-full py-2.5 text-sm text-indigo-300 hover:text-white hover:bg-indigo-500/10 transition-colors border-t border-white/10"
                   >
-                    View all requests
+                    View requests
                   </button>
                 </div>
               )}
