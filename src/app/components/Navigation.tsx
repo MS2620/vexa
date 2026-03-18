@@ -8,7 +8,6 @@ import {
   ShieldBan,
   Users,
   Settings,
-  Play,
   Menu,
   X,
   Search,
@@ -38,18 +37,6 @@ export default function Navigation() {
     router.push("/login");
     router.refresh();
   };
-
-  // Close mobile menu on route change
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-    setIsMobileSearchOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!isMobileSearchOpen) {
-      setMobileSearchQuery("");
-    }
-  }, [isMobileSearchOpen]);
 
   useEffect(() => {
     const loadCurrentUser = async () => {
@@ -232,18 +219,6 @@ export default function Navigation() {
           >
             <Menu className="w-4 h-4" />
           </button>
-          <button
-            onClick={handleLogout}
-            className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-gray-400 border border-white/5 hover:bg-white/10"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-          <Link
-            href="/settings"
-            className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center text-gray-400 border border-white/5 hover:bg-white/10"
-          >
-            <Settings className="w-4 h-4" />
-          </Link>
         </div>
       </header>
 
@@ -302,11 +277,24 @@ export default function Navigation() {
             className="w-full max-w-xs bg-[#161824] border border-white/10 rounded-xl p-3 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-2 pb-2 mb-2 border-b border-white/10">
-              <p className="text-sm font-semibold text-white truncate">
-                {username}
-              </p>
-              <p className="text-xs text-gray-400 truncate">{roleLabel}</p>
+            <div className="px-2 pb-2 mb-2 border-b border-white/10 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white truncate">
+                  {username}
+                </p>
+                <p className="text-xs text-gray-400 truncate">{roleLabel}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                className="shrink-0 inline-flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-md px-2 py-1"
+                aria-label="Log out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Logout
+              </button>
             </div>
 
             <div className="space-y-1">
