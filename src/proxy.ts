@@ -7,7 +7,21 @@ import { cookies } from "next/headers";
 export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
 
-  if (path.startsWith("/_next") || path.startsWith("/api")) {
+  const isPwaOrPublicAsset =
+    path === "/sw.js" ||
+    path === "/manifest.webmanifest" ||
+    path === "/favicon.ico" ||
+    path === "/icon.png" ||
+    path === "/badge.png" ||
+    path === "/icon-192x192.png" ||
+    path === "/icon-512x512.png" ||
+    path === "/apple-touch-icon.png";
+
+  if (
+    path.startsWith("/_next") ||
+    path.startsWith("/api") ||
+    isPwaOrPublicAsset
+  ) {
     return NextResponse.next();
   }
 

@@ -1,6 +1,15 @@
 self.addEventListener("push", function (event) {
   if (event.data) {
-    const data = event.data.json();
+    let data;
+    try {
+      data = event.data.json();
+    } catch {
+      data = {
+        title: "Vexa",
+        body: event.data.text(),
+      };
+    }
+
     const options = {
       body: data.body,
       icon: data.icon || "/icon.png",
@@ -9,6 +18,7 @@ self.addEventListener("push", function (event) {
       data: {
         dateOfArrival: Date.now(),
         primaryKey: "2",
+        targetPath: data.targetPath || "/",
       },
     };
     event.waitUntil(self.registration.showNotification(data.title, options));
@@ -17,5 +27,6 @@ self.addEventListener("push", function (event) {
 
 self.addEventListener("notificationclick", function (event) {
   event.notification.close();
-  event.waitUntil(clients.openWindow(self.location.origin + "/"));
+  const targetPath = event.notification?.data?.targetPath || "/";
+  event.waitUntil(clients.openWindow(self.location.origin + targetPath));
 });

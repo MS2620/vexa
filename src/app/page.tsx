@@ -317,7 +317,7 @@ export default function Dashboard() {
         title="Recently Added"
         carouselId="carousel-recent"
         onScroll={scrollCarousel}
-        viewAllHref="/recently-added"
+        viewAllHref="/movies"
         sectionClassName={sectionClass}
         headerClassName={sectionHeaderClass}
         titleClassName={sectionTitleClass}
