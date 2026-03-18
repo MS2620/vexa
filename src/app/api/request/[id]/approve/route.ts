@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { access } from "fs/promises";
 import { openDb } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { createSymlinks } from "@/lib/symlinks";
@@ -108,7 +109,7 @@ export async function POST(
       selectedInfoData = latest;
     }
 
-    await createSymlinks({
+    const createdPaths = await createSymlinks({
       infoData: selectedInfoData,
       title: req.title || "Unknown",
       tmdbId: req.tmdb_id || null,
@@ -117,15 +118,36 @@ export async function POST(
       tmdbKey: settings.tmdb_key || "",
     });
 
+    if (createdPaths.length > 0) {
+      const checkPath = createdPaths[0];
+      let fileExists = false;
+      let attempts = 0;
+      const maxAttempts = 24;
+
+      while (!fileExists && attempts < maxAttempts) {
+        try {
+          await access(checkPath);
+          fileExists = true;
+        } catch {
+          attempts++;
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+      }
+    }
+
     const mediaType = req.media_type === "tv" ? "tv" : "movie";
     const sectionId =
       mediaType === "tv" ? settings.plex_tv_lib_id : settings.plex_lib_id;
 
-    if (settings.plex_url && settings.plex_token && sectionId) {
+    if (settings.plex_url && settings.plex_token) {
       try {
-        const refreshRes = await fetch(
-          `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
-        );
+        const refreshRes = sectionId
+          ? await fetch(
+              `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
+            )
+          : await fetch(
+              `${settings.plex_url}/library/sections/all/refresh?X-Plex-Token=${settings.plex_token}`,
+            );
 
         if (refreshRes.ok) {
           await notifyUsers({
@@ -137,45 +159,52 @@ export async function POST(
               : "/requests",
           });
 
-          const plexItemsRes = await fetch(
-            `${settings.plex_url}/library/sections/${sectionId}/all?includeGuids=1&X-Plex-Token=${settings.plex_token}`,
-            { headers: { Accept: "application/json" } },
-          );
+          if (!sectionId) {
+            await db.run(
+              `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+              [id],
+            );
+          } else {
+            const plexItemsRes = await fetch(
+              `${settings.plex_url}/library/sections/${sectionId}/all?includeGuids=1&X-Plex-Token=${settings.plex_token}`,
+              { headers: { Accept: "application/json" } },
+            );
 
-          if (plexItemsRes.ok) {
-            const plexData = await plexItemsRes.json();
-            const metadata = plexData?.MediaContainer?.Metadata || [];
-            const tmdbId = req.tmdb_id?.toString();
-            const titleNorm = req.title?.toLowerCase().trim();
+            if (plexItemsRes.ok) {
+              const plexData = await plexItemsRes.json();
+              const metadata = plexData?.MediaContainer?.Metadata || [];
+              const tmdbId = req.tmdb_id?.toString();
+              const titleNorm = req.title?.toLowerCase().trim();
 
-            const found = metadata.some((item: any) => {
-              const tmdbGuids = (item.Guid || [])
-                .filter((guid: any) => guid.id?.startsWith("tmdb://"))
-                .map((guid: any) => guid.id.replace("tmdb://", ""));
-              const plexTitle = item.title?.toLowerCase().trim();
+              const found = metadata.some((item: any) => {
+                const tmdbGuids = (item.Guid || [])
+                  .filter((guid: any) => guid.id?.startsWith("tmdb://"))
+                  .map((guid: any) => guid.id.replace("tmdb://", ""));
+                const plexTitle = item.title?.toLowerCase().trim();
 
-              return (
-                (tmdbId && tmdbGuids.includes(tmdbId)) ||
-                (titleNorm && plexTitle === titleNorm)
-              );
-            });
+                return (
+                  (tmdbId && tmdbGuids.includes(tmdbId)) ||
+                  (titleNorm && plexTitle === titleNorm)
+                );
+              });
 
-            if (found) {
-              await db.run(
-                `UPDATE requests SET status = 'Available' WHERE id = ?`,
-                [id],
-              );
+              if (found) {
+                await db.run(
+                  `UPDATE requests SET status = 'Available' WHERE id = ?`,
+                  [id],
+                );
+              } else {
+                await db.run(
+                  `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+                  [id],
+                );
+              }
             } else {
               await db.run(
                 `UPDATE requests SET status = 'Requested' WHERE id = ?`,
                 [id],
               );
             }
-          } else {
-            await db.run(
-              `UPDATE requests SET status = 'Requested' WHERE id = ?`,
-              [id],
-            );
           }
         }
       } catch (e) {
