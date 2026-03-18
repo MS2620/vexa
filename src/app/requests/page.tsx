@@ -158,7 +158,7 @@ export default function RequestsPage() {
                             toast.success("Request approved");
                             fetchRequests();
                           }}
-                          className="flex-1 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 rounded-lg text-xs font-bold uppercase tracking-wide transition-all hover:shadow-lg hover:shadow-green-900/20"
+                          className="flex-1 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 rounded-lg text-xs font-bold uppercase tracking-wide transition-all hover:shadow-lg hover:shadow-green-900/20 cursor-pointer"
                         >
                           Approve
                         </button>
@@ -180,7 +180,7 @@ export default function RequestsPage() {
                             toast.success("Request denied");
                             fetchRequests();
                           }}
-                          className="flex-1 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg text-xs font-bold uppercase tracking-wide transition-all hover:shadow-lg hover:shadow-red-900/20"
+                          className="flex-1 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg text-xs font-bold uppercase tracking-wide transition-all hover:shadow-lg hover:shadow-red-900/20 cursor-pointer"
                         >
                           Deny
                         </button>

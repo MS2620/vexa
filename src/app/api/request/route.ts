@@ -70,6 +70,34 @@ export async function POST(req: Request) {
         status: "Pending Approval",
       });
 
+      try {
+        const admins = await db.all<{ username: string }[]>(
+          "SELECT username FROM users WHERE role = 'admin' AND username IS NOT NULL AND TRIM(username) != ''",
+        );
+        const adminUsernames = admins
+          .map((row) => row.username.trim())
+          .filter(Boolean);
+
+        if (adminUsernames.length > 0) {
+          await notifyUsers({
+            type: "request",
+            title: "New request pending approval",
+            body: `${requestedBy} requested ${title || "a title"}`,
+            targetPath: "/requests",
+            usernames: adminUsernames,
+          });
+        }
+      } catch (notificationError) {
+        await addLog("warn", "Failed to notify admins about pending request", {
+          requestedBy,
+          title,
+          error:
+            notificationError instanceof Error
+              ? notificationError.message
+              : String(notificationError),
+        });
+      }
+
       return NextResponse.json({ success: true, pending: true });
     }
 

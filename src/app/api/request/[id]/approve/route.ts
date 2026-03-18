@@ -8,6 +8,7 @@ type RDFile = {
   id: number;
   path: string;
   bytes: number;
+  selected?: number;
 };
 
 export async function POST(
@@ -26,6 +27,11 @@ export async function POST(
       [id],
     );
     if (!req) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    await db.run(
+      `UPDATE requests SET status = 'Processing', approved = 1 WHERE id = ?`,
+      [id],
+    );
 
     const settings = await db.get(
       "SELECT rd_token, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, tmdb_key FROM settings WHERE id = 1",
@@ -84,30 +90,38 @@ export async function POST(
       );
     }
 
-    // Create Plex symlinks (fire-and-forget)
-    createSymlinks({
-      infoData,
+    let selectedInfoData = infoData;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+
+      const selectedInfoRes = await fetch(
+        `https://api.real-debrid.com/rest/1.0/torrents/info/${rdData.id}`,
+        { headers: { Authorization: `Bearer ${settings.rd_token}` } },
+      );
+      const latest = await selectedInfoRes.json();
+
+      if (latest?.files?.some((f: RDFile) => f.selected === 1)) {
+        selectedInfoData = latest;
+        break;
+      }
+
+      selectedInfoData = latest;
+    }
+
+    await createSymlinks({
+      infoData: selectedInfoData,
       title: req.title || "Unknown",
       tmdbId: req.tmdb_id || null,
       mediaType: req.media_type || "movie",
       season: req.season || null,
       tmdbKey: settings.tmdb_key || "",
-    }).catch((e) => console.error("[symlinks] Error:", e));
+    });
 
-    await db.run(
-      `UPDATE requests SET status = 'Requested', approved = 1 WHERE id = ?`,
-      [id],
-    );
+    const mediaType = req.media_type === "tv" ? "tv" : "movie";
+    const sectionId =
+      mediaType === "tv" ? settings.plex_tv_lib_id : settings.plex_lib_id;
 
-    setTimeout(async () => {
-      const mediaType = req.media_type === "tv" ? "tv" : "movie";
-      const sectionId =
-        mediaType === "tv" ? settings.plex_tv_lib_id : settings.plex_lib_id;
-
-      if (!settings.plex_url || !settings.plex_token || !sectionId) {
-        return;
-      }
-
+    if (settings.plex_url && settings.plex_token && sectionId) {
       try {
         const refreshRes = await fetch(
           `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
@@ -122,11 +136,59 @@ export async function POST(
               ? `/media/${mediaType}/${req.tmdb_id}`
               : "/requests",
           });
+
+          const plexItemsRes = await fetch(
+            `${settings.plex_url}/library/sections/${sectionId}/all?includeGuids=1&X-Plex-Token=${settings.plex_token}`,
+            { headers: { Accept: "application/json" } },
+          );
+
+          if (plexItemsRes.ok) {
+            const plexData = await plexItemsRes.json();
+            const metadata = plexData?.MediaContainer?.Metadata || [];
+            const tmdbId = req.tmdb_id?.toString();
+            const titleNorm = req.title?.toLowerCase().trim();
+
+            const found = metadata.some((item: any) => {
+              const tmdbGuids = (item.Guid || [])
+                .filter((guid: any) => guid.id?.startsWith("tmdb://"))
+                .map((guid: any) => guid.id.replace("tmdb://", ""));
+              const plexTitle = item.title?.toLowerCase().trim();
+
+              return (
+                (tmdbId && tmdbGuids.includes(tmdbId)) ||
+                (titleNorm && plexTitle === titleNorm)
+              );
+            });
+
+            if (found) {
+              await db.run(
+                `UPDATE requests SET status = 'Available' WHERE id = ?`,
+                [id],
+              );
+            } else {
+              await db.run(
+                `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+                [id],
+              );
+            }
+          } else {
+            await db.run(
+              `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+              [id],
+            );
+          }
         }
       } catch (e) {
         console.error("Plex refresh failed:", e);
+        await db.run(`UPDATE requests SET status = 'Requested' WHERE id = ?`, [
+          id,
+        ]);
       }
-    }, 5000);
+    } else {
+      await db.run(`UPDATE requests SET status = 'Requested' WHERE id = ?`, [
+        id,
+      ]);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
