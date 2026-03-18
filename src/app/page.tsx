@@ -303,137 +303,150 @@ export default function Dashboard() {
   const sectionTitleClass =
     "text-xl font-bold text-white flex items-center gap-2";
 
+  const hasPrompts =
+    showInstallPrompt || showIosInstallPrompt || showNotificationPrompt;
+
   return (
-    <div className="space-y-10 pb-10">
-      {showInstallPrompt && (
-        <div className="mx-4 mt-4 rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4 md:mx-0 md:mt-0">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-white">
-                Install Vexa App
-              </p>
-              <p className="text-xs text-indigo-200/90">
-                Add Vexa to your home screen for a faster app-like experience.
-              </p>
+    <div className="flex flex-col gap-10 pb-10">
+      {hasPrompts && (
+        <div className="flex flex-col gap-3 px-4 md:px-8 mt-4 md:mt-2 z-20 relative">
+          {showInstallPrompt && (
+            <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    Install Vexa App
+                  </p>
+                  <p className="text-xs text-indigo-200/90">
+                    Add Vexa to your home screen for a faster app-like
+                    experience.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      localStorage.setItem(
+                        "vexa-install-dismissed-at",
+                        String(Date.now()),
+                      );
+                      setShowInstallPrompt(false);
+                      if (
+                        "Notification" in window &&
+                        Notification.permission === "default" &&
+                        !(() => {
+                          const dismissedAt = Number(
+                            localStorage.getItem(
+                              "vexa-notification-dismissed-at",
+                            ) || "0",
+                          );
+                          return (
+                            dismissedAt > 0 &&
+                            Date.now() - dismissedAt <
+                              NOTIFICATION_PROMPT_SNOOZE_MS
+                          );
+                        })()
+                      ) {
+                        setShowNotificationPrompt(true);
+                      }
+                    }}
+                    className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
+                  >
+                    Later
+                  </button>
+                  <button
+                    onClick={handleInstallApp}
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500"
+                  >
+                    Install
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  localStorage.setItem(
-                    "vexa-install-dismissed-at",
-                    String(Date.now()),
-                  );
-                  setShowInstallPrompt(false);
-                  if (
-                    "Notification" in window &&
-                    Notification.permission === "default" &&
-                    !(() => {
-                      const dismissedAt = Number(
-                        localStorage.getItem(
+          )}
+
+          {showIosInstallPrompt && !showInstallPrompt && (
+            <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    Install Vexa on iPhone/iPad
+                  </p>
+                  <p className="text-xs text-indigo-200/90">
+                    In Safari: tap Share, then Add to Home Screen. Open Vexa
+                    from your Home Screen to enable push notifications.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      localStorage.setItem(
+                        "vexa-ios-install-dismissed-at",
+                        String(Date.now()),
+                      );
+                      setShowIosInstallPrompt(false);
+                    }}
+                    className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
+                  >
+                    Later
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showNotificationPrompt &&
+            !showInstallPrompt &&
+            !showIosInstallPrompt && (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      Enable Notifications
+                    </p>
+                    <p className="text-xs text-emerald-200/90">
+                      Get alerts when new movies/episodes are added to your
+                      library.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        localStorage.setItem(
                           "vexa-notification-dismissed-at",
-                        ) || "0",
-                      );
-                      return (
-                        dismissedAt > 0 &&
-                        Date.now() - dismissedAt < NOTIFICATION_PROMPT_SNOOZE_MS
-                      );
-                    })()
-                  ) {
-                    setShowNotificationPrompt(true);
-                  }
-                }}
-                className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
-              >
-                Later
-              </button>
-              <button
-                onClick={handleInstallApp}
-                className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500"
-              >
-                Install
-              </button>
-            </div>
-          </div>
+                          String(Date.now()),
+                        );
+                        setShowNotificationPrompt(false);
+                      }}
+                      className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
+                    >
+                      Later
+                    </button>
+                    <button
+                      onClick={handleEnableNotifications}
+                      disabled={isEnablingNotifications}
+                      className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+                    >
+                      {isEnablingNotifications ? "Enabling..." : "Enable"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
         </div>
       )}
 
-      {showIosInstallPrompt && !showInstallPrompt && (
-        <div className="mx-4 mt-4 rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4 md:mx-0 md:mt-0">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-white">
-                Install Vexa on iPhone/iPad
-              </p>
-              <p className="text-xs text-indigo-200/90">
-                In Safari: tap Share, then Add to Home Screen. Open Vexa from
-                your Home Screen to enable push notifications.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  localStorage.setItem(
-                    "vexa-ios-install-dismissed-at",
-                    String(Date.now()),
-                  );
-                  setShowIosInstallPrompt(false);
-                }}
-                className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
-              >
-                Later
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showNotificationPrompt &&
-        !showInstallPrompt &&
-        !showIosInstallPrompt && (
-          <div className="mx-4 mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 md:mx-0 md:mt-0">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-white">
-                  Enable Notifications
-                </p>
-                <p className="text-xs text-emerald-200/90">
-                  Get alerts when new movies/episodes are added to your library.
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    localStorage.setItem(
-                      "vexa-notification-dismissed-at",
-                      String(Date.now()),
-                    );
-                    setShowNotificationPrompt(false);
-                  }}
-                  className="rounded-lg border border-white/20 px-3 py-2 text-xs text-gray-200 hover:bg-white/10"
-                >
-                  Later
-                </button>
-                <button
-                  onClick={handleEnableNotifications}
-                  disabled={isEnablingNotifications}
-                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
-                >
-                  {isEnablingNotifications ? "Enabling..." : "Enable"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-      <DiscoverHero
-        heroItem={heroItem}
-        onDetails={() => {
-          if (!heroItem) return;
-          router.push(
-            `/media/${heroItem.media_type || "movie"}/${heroItem.id}`,
-          );
-        }}
-      />
+      <div className={`px-0 md:px-8 ${hasPrompts ? "mt-0" : ""}`}>
+        <DiscoverHero
+          heroItem={heroItem}
+          className={hasPrompts ? "md:mt-0" : "-mt-12 md:mt-2 lg:mt-0"}
+          onDetails={() => {
+            if (!heroItem) return;
+            router.push(
+              `/media/${heroItem.media_type || "movie"}/${heroItem.id}`,
+            );
+          }}
+        />
+      </div>
 
       <CarouselSection
         title="Recently Added"
