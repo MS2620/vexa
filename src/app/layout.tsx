@@ -8,9 +8,11 @@ import { Toaster } from "react-hot-toast";
 
 type PendingRequestNotification = {
   id: string | number;
+  type?: "request" | "automation";
   title: string;
-  requested_by?: string;
-  requested_at?: string;
+  subtitle?: string;
+  created_at?: string;
+  target_path?: string;
 };
 
 export default function RootLayout({
@@ -191,7 +193,7 @@ export default function RootLayout({
                       Notifications
                     </h3>
                     <span className="text-xs text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
-                      {pendingNotifications.length} pending
+                      {pendingNotifications.length} alerts
                     </span>
                   </div>
 
@@ -202,7 +204,7 @@ export default function RootLayout({
                       </p>
                     ) : pendingNotifications.length === 0 ? (
                       <p className="text-sm text-gray-400 px-4 py-4">
-                        No pending requests right now.
+                        No notifications right now.
                       </p>
                     ) : (
                       pendingNotifications.slice(0, 8).map((notification) => (
@@ -210,16 +212,30 @@ export default function RootLayout({
                           key={notification.id}
                           onClick={() => {
                             setIsNotificationsOpen(false);
-                            router.push("/requests");
+                            router.push(
+                              notification.target_path || "/requests",
+                            );
                           }}
                           className="w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors"
                         >
-                          <p className="text-sm font-medium text-white truncate">
-                            {notification.title}
-                          </p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-white truncate">
+                              {notification.title}
+                            </p>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap ${
+                                notification.type === "automation"
+                                  ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
+                                  : "text-indigo-300 bg-indigo-500/10 border-indigo-500/20"
+                              }`}
+                            >
+                              {notification.type === "automation"
+                                ? "Automation"
+                                : "Request"}
+                            </span>
+                          </div>
                           <p className="text-xs text-gray-400 mt-1">
-                            Requested by{" "}
-                            {notification.requested_by || "Unknown"}
+                            {notification.subtitle || "Notification"}
                           </p>
                         </button>
                       ))

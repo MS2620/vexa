@@ -9,11 +9,77 @@ export async function GET(req: Request) {
 
     if (statusFilter === "pending") {
       const pendingReqs = await db.all(`
-        SELECT * FROM requests 
+        SELECT id, tmdb_id, media_type, title, requested_by, requested_at
+        FROM requests 
         WHERE status = 'Pending Approval' 
         ORDER BY requested_at DESC
+        LIMIT 100
       `);
-      return NextResponse.json({ results: pendingReqs || [] });
+
+      const automationLogs = await db.all(`
+        SELECT id, message, context, timestamp
+        FROM logs
+        WHERE message LIKE '[automation] Added %'
+        ORDER BY timestamp DESC
+        LIMIT 100
+      `);
+
+      const requestNotifications = (pendingReqs || []).map((row: any) => ({
+        id: `request-${row.id}`,
+        type: "request",
+        title: row.title,
+        subtitle: `Requested by ${row.requested_by || "Unknown"}`,
+        created_at: row.requested_at,
+        target_path:
+          row.tmdb_id && row.media_type
+            ? `/media/${row.media_type}/${row.tmdb_id}`
+            : "/requests",
+      }));
+
+      const automationNotifications = (automationLogs || [])
+        .map((row: any) => ({
+          ...(function () {
+            try {
+              const parsed = row.context ? JSON.parse(row.context) : null;
+              return {
+                tmdbId: parsed?.tmdbId,
+                season: parsed?.season,
+                episode: parsed?.episode,
+              };
+            } catch {
+              return {
+                tmdbId: null,
+                season: null,
+                episode: null,
+              };
+            }
+          })(),
+          id: `automation-${row.id}`,
+          type: "automation",
+          title:
+            row.message?.replace(/^\[automation\]\s*/i, "") ||
+            "Automation update",
+          subtitle: "Auto-scheduler added a new episode",
+          created_at: row.timestamp,
+        }))
+        .map((row: any) => ({
+          id: row.id,
+          type: row.type,
+          title: row.title,
+          subtitle: row.subtitle,
+          created_at: row.created_at,
+          target_path: row.tmdbId ? `/media/tv/${row.tmdbId}` : "/requests",
+        }));
+
+      const results = [...requestNotifications, ...automationNotifications]
+        .sort((a, b) => {
+          const aTime = new Date(a.created_at || 0).getTime();
+          const bTime = new Date(b.created_at || 0).getTime();
+          return bTime - aTime;
+        })
+        .slice(0, 50);
+
+      return NextResponse.json({ results });
     }
 
     // Group by title, show the most recent request per title
