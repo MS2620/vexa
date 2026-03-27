@@ -23,6 +23,7 @@ import { UsersScreen } from "./src/screens/UsersScreen";
 import { LogsScreen } from "./src/screens/LogsScreen";
 import { NotificationsScreen } from "./src/screens/NotificationsScreen";
 import { CalendarScreen } from "./src/screens/CalendarScreen";
+import { SearchScreen } from "./src/screens/SearchScreen";
 
 Notifications.setNotificationHandler({
   handleNotification: async () =>
@@ -148,7 +149,6 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabKey>("discover");
-  const [searchText, setSearchText] = useState("");
   const [selectedMedia, setSelectedMedia] = useState<SelectedMediaState>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
 
@@ -388,8 +388,18 @@ export default function App() {
           <Text style={styles.brandTitle}>Vexa</Text>
         </View>
         <View style={styles.topRightIcons}>
-          <Pressable style={styles.iconBtn}>
-            <Feather name="search" size={20} color="#9BA6CC" />
+          <Pressable
+            style={styles.iconBtn}
+            onPress={() => {
+              setActiveTab("search");
+              setSelectedMedia(null);
+            }}
+          >
+            <Feather
+              name="search"
+              size={20}
+              color={activeTab === "search" ? "#FFF" : "#9BA6CC"}
+            />
           </Pressable>
           <Pressable
             style={styles.iconBtn}
@@ -488,6 +498,10 @@ export default function App() {
           />
         ) : activeTab === "calendar" ? (
           <CalendarScreen
+            onSelectMedia={(id, type) => setSelectedMedia({ id, type })}
+          />
+        ) : activeTab === "search" ? (
+          <SearchScreen
             onSelectMedia={(id, type) => setSelectedMedia({ id, type })}
           />
         ) : activeTab === "requests" ? (
