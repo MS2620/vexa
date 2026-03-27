@@ -30,7 +30,7 @@ const RESOLUTION_SCORE: Record<string, number> = {
 
 const globalState = globalThis as typeof globalThis & {
   __episodeAutomationStarted?: boolean;
-  __episodeAutomationTimer?: NodeJS.Timeout;
+  __episodeAutomationTimer?: ReturnType<typeof setInterval>;
   __episodeAutomationRunning?: boolean;
   __episodeAutomationLastEveningDate?: string;
   __episodeAutomationLastMorningDate?: string;

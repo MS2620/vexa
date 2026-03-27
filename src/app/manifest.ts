@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Vexa",
     short_name: "Vexa",
     description: "A self-hosted media request and management system.",
-    start_url: "/",
+    start_url: "/mobile.html",
     display: "standalone",
     background_color: "#000000",
     theme_color: "#000000",
