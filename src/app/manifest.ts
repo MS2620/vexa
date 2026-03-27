@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "A self-hosted media request and management system.",
     start_url: "/mobile.html",
     display: "standalone",
-    background_color: "#000000",
-    theme_color: "#000000",
+    background_color: "#0C0E17",
+    theme_color: "#0C0E17",
     icons: [
       {
         src: "/icon-192x192.png",
