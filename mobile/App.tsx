@@ -22,6 +22,7 @@ import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { UsersScreen } from "./src/screens/UsersScreen";
 import { LogsScreen } from "./src/screens/LogsScreen";
 import { NotificationsScreen } from "./src/screens/NotificationsScreen";
+import { CalendarScreen } from "./src/screens/CalendarScreen";
 
 Notifications.setNotificationHandler({
   handleNotification: async () =>
@@ -485,6 +486,10 @@ export default function App() {
             title={activeConfig.title}
             onSelectMedia={(id, type) => setSelectedMedia({ id, type })}
           />
+        ) : activeTab === "calendar" ? (
+          <CalendarScreen
+            onSelectMedia={(id, type) => setSelectedMedia({ id, type })}
+          />
         ) : activeTab === "requests" ? (
           <RequestsScreen />
         ) : activeTab === "settings" ? (
@@ -539,17 +544,11 @@ export default function App() {
               <View
                 style={[styles.navIconWrap, isActive && styles.navIconActive]}
               >
-                {isActive && activeTab === "discover" ? (
-                  <View style={styles.discoverOrb}>
-                    <Text style={styles.discoverOrbText}>N</Text>
-                  </View>
-                ) : (
-                  <Feather
-                    name={tab.icon as any}
-                    size={22}
-                    color={isActive ? "#5D7AF2" : "#8088A7"}
-                  />
-                )}
+                <Feather
+                  name={tab.icon as any}
+                  size={22}
+                  color={isActive ? "#5D7AF2" : "#8088A7"}
+                />
               </View>
               <Text
                 style={[styles.navLabel, isActive && styles.navLabelActive]}
@@ -708,21 +707,6 @@ const styles = StyleSheet.create({
   },
   navIconActive: {
     // Optionally background here if needed
-  },
-  discoverOrb: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#1B2244",
-    borderWidth: 1,
-    borderColor: "#5D7AF2",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  discoverOrbText: {
-    color: "#5D7AF2",
-    fontWeight: "700",
-    fontSize: 14,
   },
   navLabel: {
     color: "#8088A7",
