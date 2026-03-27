@@ -14,7 +14,11 @@ export const sessionOptions = {
   cookieName: "vexa_session",
   cookieOptions: {
     // Only enforce HTTPS cookies when explicitly opted in — homelab setups typically use HTTP
-    secure: process.env.SECURE_COOKIES === "true",
+    secure:
+      process.env.NODE_ENV === "development" ||
+      process.env.SECURE_COOKIES === "true",
+    sameSite:
+      process.env.NODE_ENV === "development" ? "none" : ("lax" as const),
   },
 };
 
