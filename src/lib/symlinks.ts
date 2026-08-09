@@ -32,17 +32,15 @@ export async function createSymlinks({
   const plexPaths: string[] = [];
   const jellyfinPaths: string[] = [];
 
-  // Skip silently if the zurg mount isn't available
+  // Skip if zurg mount not available
   try {
     await fs.access(DEBRID_MOUNT);
   } catch {
-    console.warn(
-      `[symlinks] ${DEBRID_MOUNT} not accessible — skipping symlink creation`,
-    );
+    console.warn(`[symlinks] ${DEBRID_MOUNT} not accessible — skipping`);
     return { plex: plexPaths, jellyfin: jellyfinPaths };
   }
 
-  // Fetch release year from TMDB
+  // Get year for folder name
   let year = "";
   if (tmdbId && tmdbKey) {
     try {
@@ -56,31 +54,30 @@ export async function createSymlinks({
         mediaType === "movie" ? data.release_date : data.first_air_date;
       if (dateStr) year = (dateStr as string).slice(0, 4);
     } catch {
-      // Year lookup failed — proceed without it
+      // ignore, continue without year
     }
   }
 
   const folderName = year ? `${title} (${year})` : title;
 
-  // Only link selected video files
   const videoFiles = infoData.files.filter(
     (f) => f.selected === 1 && /\.(mkv|mp4|avi)$/i.test(f.path),
   );
 
   if (videoFiles.length === 0) {
-    console.warn(`[symlinks] No selected video files found for "${title}"`);
+    console.warn(`[symlinks] No selected video files for "${title}"`);
     return { plex: plexPaths, jellyfin: jellyfinPaths };
   }
 
   for (const file of videoFiles) {
-    // Build source path
+    // Normalize source path, including flat torrents wrapped by zurg
     const parts = file.path.replace(/^\//, "").split("/");
     const sourcePath =
       parts.length === 1
         ? path.join(DEBRID_MOUNT, infoData.filename, parts[0])
         : path.join(DEBRID_MOUNT, file.path);
 
-    // Create Plex symlinks (soft symlinks - Plex supports these)
+    // ---------- Plex (symlinks) ----------
     const plexTargetDir = path.join(
       PLEX_SYMLINK_ROOT,
       mediaType === "movie" ? "Movies" : "TV_Shows",
@@ -89,25 +86,23 @@ export async function createSymlinks({
         ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
         : []),
     );
-
     await fs.mkdir(plexTargetDir, { recursive: true });
-    const plexTargetPath = path.join(plexTargetDir, path.basename(file.path));
 
+    const plexTargetPath = path.join(plexTargetDir, path.basename(file.path));
     try {
       await fs.symlink(sourcePath, plexTargetPath);
       console.log(`[plex] ${plexTargetPath} → ${sourcePath}`);
       plexPaths.push(plexTargetPath);
-    } catch (e: unknown) {
-      const err = e as NodeJS.ErrnoException;
-      if (err.code === "EEXIST") {
+    } catch (e: any) {
+      if (e.code === "EEXIST") {
         plexPaths.push(plexTargetPath);
       } else {
-        console.error(`[plex] Failed: ${err.message}`);
+        console.error(`[plex] symlink failed: ${e.message}`);
       }
     }
 
-    // Create Jellyfin hard links (hard links - Jellyfin requires these)
-    const jellyfinTargetDir = path.join(
+    // ---------- Jellyfin (hard links) ----------
+    const jfTargetDir = path.join(
       JELLYFIN_LINK_ROOT,
       mediaType === "movie" ? "Movies" : "TV_Shows",
       folderName,
@@ -115,34 +110,30 @@ export async function createSymlinks({
         ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
         : []),
     );
+    await fs.mkdir(jfTargetDir, { recursive: true });
 
-    await fs.mkdir(jellyfinTargetDir, { recursive: true });
-    const jellyfinTargetPath = path.join(
-      jellyfinTargetDir,
-      path.basename(file.path),
-    );
+    const jfTargetPath = path.join(jfTargetDir, path.basename(file.path));
 
     try {
-      await fs.link(sourcePath, jellyfinTargetPath);
-      console.log(`[jellyfin] ${jellyfinTargetPath} => ${sourcePath}`);
-      jellyfinPaths.push(jellyfinTargetPath);
-    } catch (e: unknown) {
-      const err = e as NodeJS.ErrnoException;
-      if (err.code === "EXDEV") {
-        // Cross-filesystem - fall back to symlink for Jellyfin (won't work ideally, but better than nothing)
+      await fs.link(sourcePath, jfTargetPath); // HARD LINK
+      console.log(`[jellyfin] ${jfTargetPath} => ${sourcePath}`);
+      jellyfinPaths.push(jfTargetPath);
+    } catch (e: any) {
+      if (e.code === "EEXIST") {
+        jellyfinPaths.push(jfTargetPath);
+      } else if (e.code === "EXDEV") {
+        // Cross-filesystem – fall back to symlink as last resort
         console.warn(
-          `[jellyfin] EXDEV - falling back to symlink for ${jellyfinTargetPath}`,
+          `[jellyfin] EXDEV for ${jfTargetPath}, falling back to symlink`,
         );
         try {
-          await fs.symlink(sourcePath, jellyfinTargetPath);
-          jellyfinPaths.push(jellyfinTargetPath);
-        } catch {
-          // Ignore if even symlink fails
+          await fs.symlink(sourcePath, jfTargetPath);
+          jellyfinPaths.push(jfTargetPath);
+        } catch (se: any) {
+          console.error(`[jellyfin] fallback symlink failed: ${se.message}`);
         }
-      } else if (err.code === "EEXIST") {
-        jellyfinPaths.push(jellyfinTargetPath);
       } else {
-        console.error(`[jellyfin] Failed: ${err.message}`);
+        console.error(`[jellyfin] hard link failed: ${e.message}`);
       }
     }
   }
