@@ -2,6 +2,7 @@ import { openDb } from "@/lib/db";
 import { createSymlinks } from "@/lib/symlinks";
 import { addLog } from "@/lib/logger";
 import { notifyUsers } from "@/lib/notifications";
+import { access } from "fs/promises";
 
 type Stream = {
   infoHash?: string;
