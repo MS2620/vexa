@@ -8,6 +8,8 @@ import {
   CheckCircle,
   XCircle,
   SkipForward,
+  Film,
+  Tv,
 } from "lucide-react";
 
 const DEFAULT_VAPID_SUBJECT = "mailto:notifications@yourdomain.com";
@@ -17,8 +19,17 @@ type SyncItem = {
   filename: string;
   title?: string;
   reason?: string;
+  plexCount?: number;
+  jellyfinCount?: number;
 };
-type SyncSummary = { synced: number; skipped: number; failed: number };
+type SyncSummary = {
+  synced: number;
+  skipped: number;
+  failed: number;
+  plexRefreshed: boolean;
+  jellyfinRefreshed: boolean;
+  scansTriggered: string[];
+};
 
 type CollectionSyncItem = {
   status: "created" | "updated" | "skipped" | "failed";
@@ -43,12 +54,20 @@ export default function Settings() {
   const [formData, setFormData] = useState({
     tmdb_key: "",
     rd_token: "",
+    // Plex
     plex_url: "",
     plex_token: "",
     plex_lib_id: "",
     plex_tv_lib_id: "",
+    // Jellyfin
+    jellyfin_url: "",
+    jellyfin_token: "",
+    jellyfin_lib_id: "",
+    jellyfin_tv_lib_id: "",
+    // Preferences
     preferred_resolution: "1080p",
     preferred_language: "en",
+    // Notifications
     vapid_subject: DEFAULT_VAPID_SUBJECT,
     smtp_host: "",
     smtp_port: "587",
@@ -56,38 +75,24 @@ export default function Settings() {
     smtp_pass: "",
     smtp_from: "",
   });
+
   const [serviceStatus, setServiceStatus] = useState<any>(null);
   const [statusLoading, setStatusLoading] = useState(true);
 
-  const [syncState, setSyncState] = useState<"idle" | "running" | "done">(
-    "idle",
-  );
+  const [syncState, setSyncState] = useState<"idle" | "running" | "done">("idle");
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
   const [syncItems, setSyncItems] = useState<SyncItem[]>([]);
   const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [syncTab, setSyncTab] = useState<"synced" | "skipped" | "failed">(
-    "synced",
-  );
-  const [collectionSyncState, setCollectionSyncState] = useState<
-    "idle" | "running" | "done"
-  >("idle");
-  const [collectionProgress, setCollectionProgress] = useState({
-    current: 0,
-    total: 0,
-  });
-  const [collectionItems, setCollectionItems] = useState<CollectionSyncItem[]>(
-    [],
-  );
-  const [collectionSummary, setCollectionSummary] =
-    useState<CollectionSyncSummary | null>(null);
+  const [syncTab, setSyncTab] = useState<"synced" | "skipped" | "failed">("synced");
+
+  const [collectionSyncState, setCollectionSyncState] = useState<"idle" | "running" | "done">("idle");
+  const [collectionProgress, setCollectionProgress] = useState({ current: 0, total: 0 });
+  const [collectionItems, setCollectionItems] = useState<CollectionSyncItem[]>([]);
+  const [collectionSummary, setCollectionSummary] = useState<CollectionSyncSummary | null>(null);
   const [collectionError, setCollectionError] = useState<string | null>(null);
-  const [collectionTab, setCollectionTab] = useState<
-    "created" | "updated" | "skipped" | "failed"
-  >("created");
-  const [collectionPhaseLabel, setCollectionPhaseLabel] = useState(
-    "Preparing collection sync…",
-  );
+  const [collectionTab, setCollectionTab] = useState<"created" | "updated" | "skipped" | "failed">("created");
+  const [collectionPhaseLabel, setCollectionPhaseLabel] = useState("Preparing collection sync…");
 
   const handleSync = async () => {
     setSyncState("running");
@@ -245,7 +250,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="pt-4 pb-12 px-6 md:px-12 animate-in fade-in duration-500 max-w-5xl mx-auto space-y-8">
+    <div className="pt-4 pb-12 px-6 md:px-12 animate-in fade-in duration-500 max-w-6xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-2 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white mb-1">Configuration</h1>
@@ -256,7 +261,7 @@ export default function Settings() {
       </div>
 
       {/* ── LIVE STATUS PANEL ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Real-Debrid Card */}
         <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20">
           <div className="flex items-center justify-between mb-4">
@@ -286,7 +291,7 @@ export default function Settings() {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Premium Days Left</span>
+                <span className="text-gray-400">Premium Days</span>
                 <span
                   className={
                     serviceStatus.rd.user.premium > 2592000
@@ -302,36 +307,6 @@ export default function Settings() {
                 <span className="text-white">
                   {serviceStatus.rd.user.points?.toLocaleString()}
                 </span>
-              </div>
-            </div>
-          )}
-          {serviceStatus?.rd?.torrents?.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-white/5">
-              <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">
-                Recent Torrents
-              </p>
-              <div className="space-y-2">
-                {serviceStatus.rd.torrents.slice(0, 3).map((t: any) => (
-                  <div
-                    key={t.id}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <p className="text-xs text-gray-300 truncate flex-1">
-                      {t.filename}
-                    </p>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
-                        t.status === "downloaded"
-                          ? "bg-green-900/30 text-green-400"
-                          : t.status === "downloading"
-                            ? "bg-blue-900/30 text-blue-400"
-                            : "bg-gray-800 text-gray-400"
-                      }`}
-                    >
-                      {t.status}
-                    </span>
-                  </div>
-                ))}
               </div>
             </div>
           )}
@@ -361,19 +336,53 @@ export default function Settings() {
             {statusLoading
               ? "Checking connection..."
               : serviceStatus?.plex?.status === "connected"
-                ? "Plex server is reachable and responding."
-                : "Cannot reach Plex. Check your URL and token below."}
+                ? "Plex server is reachable."
+                : formData.plex_url
+                  ? "Cannot reach Plex. Check URL/token."
+                  : "Not configured"}
+          </p>
+        </div>
+
+        {/* Jellyfin Card */}
+        <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Jellyfin</h3>
+            {statusLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+            ) : (
+              <span
+                className={`text-xs px-2 py-1 rounded-full font-bold border ${
+                  serviceStatus?.jellyfin?.status === "connected"
+                    ? "bg-green-600/20 text-green-400 border-green-600/30"
+                    : "bg-red-600/20 text-red-400 border-red-600/30"
+                }`}
+              >
+                {serviceStatus?.jellyfin?.status === "connected"
+                  ? "● Connected"
+                  : "● Unreachable"}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-400">
+            {statusLoading
+              ? "Checking connection..."
+              : serviceStatus?.jellyfin?.status === "connected"
+                ? "Jellyfin server is reachable."
+                : formData.jellyfin_url
+                  ? "Cannot reach Jellyfin. Check URL/token."
+                  : "Not configured"}
           </p>
         </div>
 
         {/* Mount Health Card */}
-        <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20 md:col-span-2">
+        <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20 md:col-span-3">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Mount Health</h3>
             {statusLoading ? (
               <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
             ) : serviceStatus?.mounts?.debrid_mount?.readable &&
-              serviceStatus?.mounts?.plex_symlink_root?.writable ? (
+              (serviceStatus?.mounts?.plex_symlink_root?.writable ||
+                serviceStatus?.mounts?.jellyfin_link_root?.writable) ? (
               <span className="text-xs px-2 py-1 rounded-full font-bold border bg-green-600/20 text-green-400 border-green-600/30">
                 ● Healthy
               </span>
@@ -384,66 +393,132 @@ export default function Settings() {
             )}
           </div>
 
-          <div className="space-y-3 text-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-gray-300 font-medium">Debrid Mount</p>
-                <p className="text-xs text-gray-500 break-all">
-                  {serviceStatus?.mounts?.debrid_mount?.path ||
-                    "/mnt/zurg/__all__"}
-                </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Debrid Mount */}
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-gray-300 font-medium">Debrid Mount</p>
+                  <p className="text-xs text-gray-500 break-all">
+                    {serviceStatus?.mounts?.debrid_mount?.path ||
+                      "/mnt/zurg/__all__"}
+                  </p>
+                </div>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
+                    serviceStatus?.mounts?.debrid_mount?.readable
+                      ? "bg-green-600/20 text-green-400 border-green-600/30"
+                      : "bg-red-600/20 text-red-400 border-red-600/30"
+                  }`}
+                >
+                  {serviceStatus?.mounts?.debrid_mount?.readable
+                    ? "Readable"
+                    : "Not Readable"}
+                </span>
               </div>
-              <span
-                className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
-                  serviceStatus?.mounts?.debrid_mount?.readable
-                    ? "bg-green-600/20 text-green-400 border-green-600/30"
-                    : "bg-red-600/20 text-red-400 border-red-600/30"
-                }`}
-              >
-                {serviceStatus?.mounts?.debrid_mount?.readable
-                  ? "Readable"
-                  : "Not Readable"}
-              </span>
+
+              {!statusLoading &&
+                !serviceStatus?.mounts?.debrid_mount?.readable && (
+                  <p className="text-xs text-yellow-300/90 wrap-break-word">
+                    {serviceStatus?.mounts?.debrid_mount?.error ||
+                      "Debrid mount is not accessible. Ensure rclone is mounted."}
+                  </p>
+                )}
             </div>
 
-            {!statusLoading &&
-              !serviceStatus?.mounts?.debrid_mount?.readable && (
-                <p className="text-xs text-yellow-300/90 wrap-break-word">
-                  {serviceStatus?.mounts?.debrid_mount?.error ||
-                    "Debrid mount is not accessible. Ensure rclone is mounted and visible to the app container."}
-                </p>
-              )}
-
-            <div className="pt-2 border-t border-white/5" />
-
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-gray-300 font-medium">Plex Symlink Root</p>
-                <p className="text-xs text-gray-500 break-all">
-                  {serviceStatus?.mounts?.plex_symlink_root?.path ||
-                    "/mnt/plex_symlinks"}
-                </p>
+            {/* Hard Link Capability */}
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-gray-300 font-medium">Hard Link Support</p>
+                  <p className="text-xs text-gray-500">
+                    Same filesystem check
+                  </p>
+                </div>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
+                    serviceStatus?.mounts?.hard_link_capable === true
+                      ? "bg-green-600/20 text-green-400 border-green-600/30"
+                      : serviceStatus?.mounts?.hard_link_capable === false
+                        ? "bg-yellow-600/20 text-yellow-300 border-yellow-600/30"
+                        : "bg-gray-600/20 text-gray-400 border-gray-600/30"
+                  }`}
+                >
+                  {serviceStatus?.mounts?.hard_link_capable === true
+                    ? "Available"
+                    : serviceStatus?.mounts?.hard_link_capable === false
+                      ? "Cross-FS"
+                      : "Unknown"}
+                </span>
               </div>
-              <span
-                className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
-                  serviceStatus?.mounts?.plex_symlink_root?.writable
-                    ? "bg-green-600/20 text-green-400 border-green-600/30"
-                    : "bg-red-600/20 text-red-400 border-red-600/30"
-                }`}
-              >
-                {serviceStatus?.mounts?.plex_symlink_root?.writable
-                  ? "Writable"
-                  : "Not Writable"}
-              </span>
+              <p className="text-xs text-gray-500">
+                Hard links work best for Jellyfin. If cross-filesystem, symlinks will be used as fallback.
+              </p>
             </div>
 
-            {!statusLoading &&
-              !serviceStatus?.mounts?.plex_symlink_root?.writable && (
-                <p className="text-xs text-yellow-300/90 wrap-break-word">
-                  {serviceStatus?.mounts?.plex_symlink_root?.error ||
-                    "Symlink root is not writable. Match APP_UID/APP_GID with host ownership and chmod/chown the directory."}
-                </p>
-              )}
+            {/* Plex Symlink Root */}
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-gray-300 font-medium">Plex Symlink Root</p>
+                  <p className="text-xs text-gray-500 break-all">
+                    {serviceStatus?.mounts?.plex_symlink_root?.path ||
+                      "/mnt/plex_symlinks"}
+                  </p>
+                </div>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
+                    serviceStatus?.mounts?.plex_symlink_root?.writable
+                      ? "bg-green-600/20 text-green-400 border-green-600/30"
+                      : "bg-red-600/20 text-red-400 border-red-600/30"
+                  }`}
+                >
+                  {serviceStatus?.mounts?.plex_symlink_root?.writable
+                    ? "Writable"
+                    : "Not Writable"}
+                </span>
+              </div>
+
+              {!statusLoading &&
+                !serviceStatus?.mounts?.plex_symlink_root?.writable && (
+                  <p className="text-xs text-yellow-300/90 wrap-break-word">
+                    {serviceStatus?.mounts?.plex_symlink_root?.error ||
+                      "Symlink root is not writable. Check permissions."}
+                  </p>
+                )}
+            </div>
+
+            {/* Jellyfin Link Root */}
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-gray-300 font-medium">Jellyfin Link Root</p>
+                  <p className="text-xs text-gray-500 break-all">
+                    {serviceStatus?.mounts?.jellyfin_link_root?.path ||
+                      "/mnt/jellyfin_links"}
+                  </p>
+                </div>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-bold border whitespace-nowrap ${
+                    serviceStatus?.mounts?.jellyfin_link_root?.writable
+                      ? "bg-green-600/20 text-green-400 border-green-600/30"
+                      : "bg-red-600/20 text-red-400 border-red-600/30"
+                  }`}
+                >
+                  {serviceStatus?.mounts?.jellyfin_link_root?.writable
+                    ? "Writable"
+                    : "Not Writable"}
+                </span>
+              </div>
+
+              {!statusLoading &&
+                !serviceStatus?.mounts?.jellyfin_link_root?.writable && (
+                  <p className="text-xs text-yellow-300/90 wrap-break-word">
+                    {serviceStatus?.mounts?.jellyfin_link_root?.error ||
+                      "Link root is not writable. Check permissions."}
+                  </p>
+                )}
+            </div>
           </div>
         </div>
       </div>
@@ -489,9 +564,12 @@ export default function Settings() {
 
         {/* Plex */}
         <div>
-          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
-            Plex
-          </h2>
+          <div className="flex items-center gap-2 mb-4">
+            <Film className="w-4 h-4 text-gray-400" />
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
+              Plex
+            </h2>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm text-gray-400 mb-2">
@@ -544,6 +622,75 @@ export default function Settings() {
                 value={formData.plex_tv_lib_id || ""}
                 onChange={(e) =>
                   setFormData({ ...formData, plex_tv_lib_id: e.target.value })
+                }
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/5" />
+
+        {/* Jellyfin */}
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Tv className="w-4 h-4 text-gray-400" />
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
+              Jellyfin
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Jellyfin URL
+              </label>
+              <input
+                type="text"
+                placeholder="http://192.168.1.X:8096"
+                value={formData.jellyfin_url || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, jellyfin_url: e.target.value })
+                }
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Jellyfin API Token
+              </label>
+              <input
+                type="password"
+                value={formData.jellyfin_token || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, jellyfin_token: e.target.value })
+                }
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Jellyfin Movie Library Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Movies"
+                value={formData.jellyfin_lib_id || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, jellyfin_lib_id: e.target.value })
+                }
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Jellyfin TV Library Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. TV Shows"
+                value={formData.jellyfin_tv_lib_id || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, jellyfin_tv_lib_id: e.target.value })
                 }
                 className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
@@ -910,9 +1057,9 @@ export default function Settings() {
             Library Sync
           </h2>
           <p className="text-sm text-gray-500">
-            Scan your existing Real-Debrid library and create Plex symlinks for
-            all downloaded torrents. Safe to re-run — existing symlinks are
-            skipped.
+            Scan your existing Real-Debrid library and create symlinks for both
+            Plex (soft links) and Jellyfin (hard links). Safe to re-run —
+            existing links are skipped.
           </p>
         </div>
 
@@ -946,14 +1093,22 @@ export default function Settings() {
 
         {/* Summary */}
         {syncSummary && (
-          <div className="flex gap-4 text-sm">
-            <span className="text-green-400">
-              ✓ {syncSummary.synced} synced
-            </span>
-            <span className="text-yellow-400">
-              ⊘ {syncSummary.skipped} skipped
-            </span>
-            <span className="text-red-400">✗ {syncSummary.failed} failed</span>
+          <div className="space-y-3">
+            <div className="flex gap-4 text-sm">
+              <span className="text-green-400">
+                ✓ {syncSummary.synced} synced
+              </span>
+              <span className="text-yellow-400">
+                ⊘ {syncSummary.skipped} skipped
+              </span>
+              <span className="text-red-400">✗ {syncSummary.failed} failed</span>
+            </div>
+            {syncSummary.scansTriggered.length > 0 && (
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <RefreshCw className="w-3 h-3" />
+                Library scans triggered: {syncSummary.scansTriggered.join(" & ")}
+              </div>
+            )}
           </div>
         )}
 
@@ -1023,7 +1178,7 @@ export default function Settings() {
                       {item.status === "failed" && (
                         <XCircle className="w-3.5 h-3.5 text-red-400 mt-0.5 shrink-0" />
                       )}
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <span className="text-gray-300 block truncate">
                           {item.status === "synced"
                             ? item.title
@@ -1036,6 +1191,14 @@ export default function Settings() {
                         )}
                         {item.reason && (
                           <span className="text-gray-600">{item.reason}</span>
+                        )}
+                        {item.status === "synced" && (
+                          <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500">
+                            <Film className="w-3 h-3" />
+                            <span>Plex: {item.plexCount || 0} files</span>
+                            <Tv className="w-3 h-3 ml-2" />
+                            <span>Jellyfin: {item.jellyfinCount || 0} files</span>
+                          </div>
                         )}
                       </div>
                     </div>

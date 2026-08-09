@@ -13,40 +13,22 @@ type ParsedName = {
 type TmdbMatch = { id: number; title: string; mediaType: "movie" | "tv" };
 
 // Extract title, year, type, and season from a raw torrent filename.
-// Handles the most common naming conventions — not perfect, but covers >90% of real-world cases.
 function parseTorrentName(filename: string): ParsedName {
-  // Strip common video file extensions (e.g. "Shrek (2001).mkv")
   let s = filename.replace(/\.(mkv|mp4|avi|mov|wmv|m4v|ts|iso)$/i, "");
-
-  // Strip site watermark prefixes in square brackets: "[ Torrent911.si ]", "[www.site.com]"
   s = s.replace(/^\[[\w\s.:-]+\]\s*/, "");
-
-  // Strip URL-style prefixes without brackets: "www.UIndex.org - "
-  // Keep this strict to avoid eating normal dotted scene names before tokens like "WEB-DL".
   s = s.replace(/^(?:https?:\/\/)?www\.[\w.-]+\.[a-z]{2,6}\s*[-–—|]\s*/i, "");
-
-  // Strip Chinese/full-width bracket prefixes: "【高清剧集网 www.site.com】"
   s = s.replace(/^【[^】]*】\s*/, "");
-
-  // Normalise dots/underscores to spaces
   s = s.replace(/[._]/g, " ").trim();
-
-  // Strip bracketed quality/language tags like [2160p], [HDR], [ger, eng] — but not bare years
   s = s.replace(/\[(?!\d{4}\])[^\]]*\]/g, " ");
-
-  // Collapse multiple spaces
   s = s.replace(/\s{2,}/g, " ").trim();
 
-  // TV — S01-S04 multi-season range: "ShowName S01-S04"
   const multiSeason = s.match(/^(.+?)\s+[Ss](\d{1,2})-[Ss]\d{1,2}/i);
   if (multiSeason)
     return buildTvParsedName(multiSeason[1], parseInt(multiSeason[2]));
 
-  // TV — episode marker: ShowName S01E01
   const sxex = s.match(/^(.+?)\s+[Ss](\d{1,2})[Ee]\d{1,2}/i);
   if (sxex) return buildTvParsedName(sxex[1], parseInt(sxex[2]));
 
-  // TV — (Season N) or (S03) in parentheses: "The Rookie (Season 3)", "The Blacklist (S03)"
   const parenSeason = s.match(
     /^(.+?)\s+\((?:[Ss]eason\s+(\d{1,2})|[Ss](\d{2}))\)/i,
   );
@@ -55,7 +37,6 @@ function parseTorrentName(filename: string): ParsedName {
     if (!isNaN(season)) return buildTvParsedName(parenSeason[1], season);
   }
 
-  // TV — bare season pack: ShowName Season 2 / ShowName S02
   const pack = s.match(
     /^(.+?)\s+(?:[Ss]eason\s+(\d{1,2})|[Ss](\d{2})(?:\s|$))/i,
   );
@@ -64,7 +45,6 @@ function parseTorrentName(filename: string): ParsedName {
     if (!isNaN(season)) return buildTvParsedName(pack[1], season);
   }
 
-  // TV — explicit "Season S01" form: "NCIS 2003 Season S01"
   const seasonWithSPrefix = s.match(
     /^(.+?)\s+[Ss]eason\s+[Ss](\d{1,2})(?:\s|$)/i,
   );
@@ -73,7 +53,6 @@ function parseTorrentName(filename: string): ParsedName {
     if (!isNaN(season)) return buildTvParsedName(seasonWithSPrefix[1], season);
   }
 
-  // Movie — year in square brackets: "Despicable Me 4 [2024]"
   const withYearSquare = s.match(/^(.+?)\s+\[((?:19|20)\d{2})\]/);
   if (withYearSquare)
     return {
@@ -83,7 +62,6 @@ function parseTorrentName(filename: string): ParsedName {
       season: null,
     };
 
-  // Movie — year inside parentheses: "Title (2001)" or "Title (2001 ITA-ENG)"
   const withYearParen = s.match(/^(.+?)\s+\(((?:19|20)\d{2})[^)]*\)/);
   if (withYearParen)
     return {
@@ -93,7 +71,6 @@ function parseTorrentName(filename: string): ParsedName {
       season: null,
     };
 
-  // Movie — bare year: "Title 2001 BluRay…"
   const withYear = s.match(/^(.+?)\s+((?:19|20)\d{2})(?:\s|$)/);
   if (withYear)
     return {
@@ -103,13 +80,11 @@ function parseTorrentName(filename: string): ParsedName {
       season: null,
     };
 
-  // Fallback — treat as movie, no year
   return { title: cleanTitle(s), year: null, mediaType: "movie", season: null };
 }
 
 function buildTvParsedName(rawTitle: string, season: number): ParsedName {
   const normalized = cleanTitle(rawTitle);
-
   const parenYear = normalized.match(/\(((?:19|20)\d{2})\)\s*$/);
   const bareYear = normalized.match(/\s+((?:19|20)\d{2})\s*$/);
   const year = parenYear?.[1] ?? bareYear?.[1] ?? null;
@@ -122,7 +97,6 @@ function buildTvParsedName(rawTitle: string, season: number): ParsedName {
   };
 }
 
-// Strip quality/codec/source tags that appear after the meaningful title part
 function cleanTitle(s: string): string {
   return s
     .replace(
@@ -135,15 +109,14 @@ function cleanTitle(s: string): string {
     .trim();
 }
 
-// Additional cleanup for TV show titles: strips absorbed years, "Season" keyword, dashes
 function cleanTvTitle(s: string): string {
   return s
-    .replace(/\s+\((?:19|20)\d{2}\)/g, "") // strip (year) anywhere in title
-    .replace(/\b[Ss]eason\s+\d{1,2}\b\s*$/g, "") // strip trailing "Season 1"
-    .replace(/\b[Ss]eason\b\s*$/g, "") // strip trailing "Season" BEFORE year strip
-    .replace(/\s+(?:19|20)\d{2}$/, "") // then strip trailing bare year
-    .replace(/[^\x00-\x7F]+/g, "") // strip non-ASCII (e.g. Chinese chars)
-    .replace(/\s*[-–—]\s*$/, "") // strip trailing " - "
+    .replace(/\s+\((?:19|20)\d{2}\)/g, "")
+    .replace(/\b[Ss]eason\s+\d{1,2}\b\s*$/g, "")
+    .replace(/\b[Ss]eason\b\s*$/g, "")
+    .replace(/\s+(?:19|20)\d{2}$/, "")
+    .replace(/[^\x00-\x7F]+/g, "")
+    .replace(/\s*[-–—]\s*$/, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -159,11 +132,9 @@ async function searchTMDB(
     const base = rawTitle.trim();
     if (base) queries.add(base);
 
-    // "Law and Order" <-> "Law & Order"
     if (/\band\b/i.test(base)) queries.add(base.replace(/\band\b/gi, "&"));
     if (base.includes("&")) queries.add(base.replace(/\s*&\s*/g, " and "));
 
-    // "Chicago P D" -> "Chicago P.D."
     queries.add(
       base.replace(
         /\b([A-Za-z])\s+([A-Za-z])(\s+([A-Za-z]))?\b/g,
@@ -173,8 +144,7 @@ async function searchTMDB(
       ),
     );
 
-    // Remove apostrophes for alternate matching
-    queries.add(base.replace(/[’']/g, ""));
+    queries.add(base.replace(/[']/g, ""));
 
     if (/^ncis(?:\s+\d{4})?$/i.test(base)) queries.add("NCIS");
 
@@ -198,6 +168,8 @@ async function searchTMDB(
   };
 
   const tryType = async (type: "movie" | "tv"): Promise<TmdbMatch | null> => {
+    const queries = buildQueryVariants(title);
+    
     for (const query of queries) {
       const result = await doSearch(query, true, type);
       if (result)
@@ -221,11 +193,9 @@ async function searchTMDB(
     return null;
   };
 
-  const queries = buildQueryVariants(title);
   const preferred = await tryType(mediaType);
   if (preferred) return preferred;
 
-  // Last resort: retry on the opposite media type in case parsing guessed wrong.
   const fallbackType = mediaType === "movie" ? "tv" : "movie";
   return tryType(fallbackType);
 }
@@ -239,7 +209,7 @@ export async function POST() {
 
   const db = await openDb();
   const settings = await db.get(
-    "SELECT rd_token, tmdb_key, plex_url, plex_token, plex_lib_id, plex_tv_lib_id FROM settings WHERE id = 1",
+    "SELECT rd_token, tmdb_key, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, jellyfin_url, jellyfin_token, jellyfin_lib_id, jellyfin_tv_lib_id FROM settings WHERE id = 1",
   );
 
   if (!settings?.rd_token)
@@ -283,12 +253,11 @@ export async function POST() {
             const infoData: { filename: string; files: RDFile[] } =
               await infoRes.json();
 
-            // Skip multi-title packs — can't map to a single TMDB entry
             if (
               /\b(collection|saga|pack|anthology|trilogy|quadrilogy|franchise|universe)\b/i.test(
                 infoData.filename,
               ) ||
-              /\b\d+(\s*[,&]\s*\d+){2,}\b/.test(infoData.filename) // e.g. "Shrek 1,2,3,4" (3+ numbers)
+              /\b\d+(\s*[,&]\s*\d+){2,}\b/.test(infoData.filename)
             ) {
               skipped++;
               send(ctrl, {
@@ -322,7 +291,8 @@ export async function POST() {
                 reason: "No TMDB match",
               });
             } else {
-              await createSymlinks({
+              // Create symlinks for both Plex and Jellyfin
+              const { plex: plexPaths, jellyfin: jellyfinPaths } = await createSymlinks({
                 infoData,
                 title: match.title,
                 tmdbId: String(match.id),
@@ -330,6 +300,7 @@ export async function POST() {
                 season: parsed.season,
                 tmdbKey: settings.tmdb_key,
               });
+
               synced++;
               syncedMediaTypes.add(match.mediaType);
               send(ctrl, {
@@ -337,6 +308,8 @@ export async function POST() {
                 status: "synced",
                 filename: infoData.filename,
                 title: match.title,
+                plexCount: plexPaths.length,
+                jellyfinCount: jellyfinPaths.length,
               });
             }
           } catch (e: unknown) {
@@ -355,26 +328,70 @@ export async function POST() {
             current: i + 1,
             total: downloaded.length,
           });
-          // Pace requests to avoid hammering RD/TMDB APIs (TMDB allows ~40 req/10s)
           await new Promise((r) => setTimeout(r, 300));
         }
 
-        const sectionIds: string[] = [];
-        if (syncedMediaTypes.has("movie") && settings.plex_lib_id) {
-          sectionIds.push(settings.plex_lib_id);
+        // Trigger library scans for both services
+        const plexSectionIds: string[] = [];
+        const jellyfinLibraries: string[] = [];
+
+        if (syncedMediaTypes.has("movie")) {
+          if (settings.plex_lib_id) plexSectionIds.push(settings.plex_lib_id);
+          if (settings.jellyfin_lib_id) jellyfinLibraries.push(settings.jellyfin_lib_id);
         }
-        if (syncedMediaTypes.has("tv") && settings.plex_tv_lib_id) {
-          sectionIds.push(settings.plex_tv_lib_id);
+        if (syncedMediaTypes.has("tv")) {
+          if (settings.plex_tv_lib_id) plexSectionIds.push(settings.plex_tv_lib_id);
+          if (settings.jellyfin_tv_lib_id) jellyfinLibraries.push(settings.jellyfin_tv_lib_id);
         }
 
-        if (settings.plex_url && settings.plex_token && sectionIds.length > 0) {
-          await Promise.all(
-            sectionIds.map((sectionId: string) =>
-              fetch(
-                `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
+        const scansTriggered: string[] = [];
+
+        // Plex refresh
+        if (settings.plex_url && settings.plex_token && plexSectionIds.length > 0) {
+          try {
+            await Promise.all(
+              plexSectionIds.map((sectionId: string) =>
+                fetch(
+                  `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
+                ),
               ),
-            ),
-          );
+            );
+            scansTriggered.push("Plex");
+            send(ctrl, { type: "scan", service: "Plex", sections: plexSectionIds });
+          } catch (e) {
+            console.error("Plex refresh failed:", e);
+          }
+        }
+
+        // Jellyfin refresh
+        if (settings.jellyfin_url && settings.jellyfin_token && jellyfinLibraries.length > 0) {
+          try {
+            // Refresh all targeted libraries
+            for (const libId of jellyfinLibraries) {
+              const scanRes = await fetch(
+                `${settings.jellyfin_url}/Library/Refresh?X-Emby-Token=${settings.jellyfin_token}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    LibraryOptions: {
+                      Name: libId,
+                    },
+                  }),
+                },
+              );
+
+              if (scanRes.ok) {
+                if (!scansTriggered.includes("Jellyfin")) {
+                  scansTriggered.push("Jellyfin");
+                }
+              }
+            }
+
+            send(ctrl, { type: "scan", service: "Jellyfin", libraries: jellyfinLibraries });
+          } catch (e) {
+            console.error("Jellyfin refresh failed:", e);
+          }
         }
 
         send(ctrl, {
@@ -382,7 +399,9 @@ export async function POST() {
           synced,
           skipped,
           failed,
-          plexRefreshed: sectionIds.length > 0,
+          plexRefreshed: plexSectionIds.length > 0,
+          jellyfinRefreshed: jellyfinLibraries.length > 0,
+          scansTriggered,
         });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Unknown error";

@@ -67,12 +67,27 @@ export async function initDb() {
   // Create tables if they don't exist (original schema)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      tmdb_key TEXT DEFAULT '',
-      rd_token TEXT DEFAULT '',
-      plex_url TEXT DEFAULT '',
-      plex_token TEXT DEFAULT '',
-      plex_lib_id TEXT DEFAULT ''
+      id INTEGER PRIMARY KEY,
+      rd_token TEXT,
+      tmdb_key TEXT,
+      plex_url TEXT,
+      plex_token TEXT,
+      plex_lib_id TEXT,
+      plex_tv_lib_id TEXT,
+      jellyfin_url TEXT,
+      jellyfin_token TEXT,
+      jellyfin_lib_id TEXT,
+      jellyfin_tv_lib_id TEXT,
+      preferred_resolution TEXT,
+      preferred_language TEXT,
+      vapid_public_key TEXT,
+      vapid_private_key TEXT,
+      vapid_subject TEXT,
+      smtp_host TEXT,
+      smtp_port TEXT,
+      smtp_user TEXT,
+      smtp_pass TEXT,
+      smtp_from TEXT
     );
     INSERT OR IGNORE INTO settings (id) VALUES (1);
 

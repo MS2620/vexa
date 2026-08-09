@@ -3,6 +3,7 @@ import fs from "fs/promises";
 
 const DEBRID_MOUNT = process.env.DEBRID_MOUNT || "/mnt/zurg/__all__";
 const PLEX_SYMLINK_ROOT = process.env.PLEX_SYMLINK_ROOT || "/mnt/plex_symlinks";
+const JELLYFIN_LINK_ROOT = process.env.JELLYFIN_LINK_ROOT || "/mnt/jellyfin_links";
 
 type RDFile = {
   id: number;
@@ -27,20 +28,21 @@ export async function createSymlinks({
   mediaType,
   season,
   tmdbKey,
-}: SymlinkParams): Promise<string[]> {
-  const createdPaths: string[] = [];
+}: SymlinkParams): Promise<{ plex: string[]; jellyfin: string[] }> {
+  const plexPaths: string[] = [];
+  const jellyfinPaths: string[] = [];
 
-  // Skip silently if the zurg mount isn't available (dev or unconfigured)
+  // Skip silently if the zurg mount isn't available
   try {
     await fs.access(DEBRID_MOUNT);
   } catch {
     console.warn(
       `[symlinks] ${DEBRID_MOUNT} not accessible — skipping symlink creation`,
     );
-    return createdPaths;
+    return { plex: plexPaths, jellyfin: jellyfinPaths };
   }
 
-  // Fetch release year from TMDB to build the Plex folder name
+  // Fetch release year from TMDB
   let year = "";
   if (tmdbId && tmdbKey) {
     try {
@@ -60,69 +62,90 @@ export async function createSymlinks({
 
   const folderName = year ? `${title} (${year})` : title;
 
-  // Only symlink selected video files (same filter as file selection)
+  // Only link selected video files
   const videoFiles = infoData.files.filter(
     (f) => f.selected === 1 && /\.(mkv|mp4|avi)$/i.test(f.path),
   );
 
   if (videoFiles.length === 0) {
     console.warn(`[symlinks] No selected video files found for "${title}"`);
-    return createdPaths;
+    return { plex: plexPaths, jellyfin: jellyfinPaths };
   }
 
   for (const file of videoFiles) {
-    // RD file.path is "/TorrentFolder/video.mkv" for multi-file torrents,
-    // or just "/video.mkv" for flat torrents (no root folder in the torrent).
-    // Zurg always wraps files in __all__ under infoData.filename, so for flat
-    // torrents we must prepend that folder name manually.
+    // Build source path
     const parts = file.path.replace(/^\//, "").split("/");
     const sourcePath =
       parts.length === 1
         ? path.join(DEBRID_MOUNT, infoData.filename, parts[0])
         : path.join(DEBRID_MOUNT, file.path);
 
-    let targetDir: string;
-    if (mediaType === "movie") {
-      targetDir = path.join(PLEX_SYMLINK_ROOT, "Movies", folderName);
-    } else {
-      const seasonStr = season
-        ? `Season ${String(season).padStart(2, "0")}`
-        : "Season 01";
-      targetDir = path.join(
-        PLEX_SYMLINK_ROOT,
-        "TV_Shows",
-        folderName,
-        seasonStr,
-      );
-    }
+    // Create Plex symlinks (soft symlinks - Plex supports these)
+    const plexTargetDir = path.join(
+      PLEX_SYMLINK_ROOT,
+      mediaType === "movie" ? "Movies" : "TV_Shows",
+      folderName,
+      ...(mediaType === "tv"
+        ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
+        : []),
+    );
 
-    await fs.mkdir(targetDir, { recursive: true });
+    await fs.mkdir(plexTargetDir, { recursive: true });
+    const plexTargetPath = path.join(plexTargetDir, path.basename(file.path));
 
-    const targetPath = path.join(targetDir, path.basename(file.path));
     try {
-      await fs.symlink(sourcePath, targetPath);
-      console.log(`[symlinks] ${targetPath} → ${sourcePath}`);
-      createdPaths.push(targetPath);
+      await fs.symlink(sourcePath, plexTargetPath);
+      console.log(`[plex] ${plexTargetPath} → ${sourcePath}`);
+      plexPaths.push(plexTargetPath);
     } catch (e: unknown) {
       const err = e as NodeJS.ErrnoException;
       if (err.code === "EEXIST") {
-        // If the existing symlink is dangling (broken target), replace it
-        try {
-          await fs.access(targetPath);
-          createdPaths.push(targetPath); // still tracking it as a valid path
-        } catch {
-          await fs.unlink(targetPath);
-          await fs.symlink(sourcePath, targetPath);
-          console.log(
-            `[symlinks] replaced dangling: ${targetPath} → ${sourcePath}`,
-          );
-          createdPaths.push(targetPath);
-        }
+        plexPaths.push(plexTargetPath);
       } else {
-        console.error(`[symlinks] Failed: ${err.message}`);
+        console.error(`[plex] Failed: ${err.message}`);
+      }
+    }
+
+    // Create Jellyfin hard links (hard links - Jellyfin requires these)
+    const jellyfinTargetDir = path.join(
+      JELLYFIN_LINK_ROOT,
+      mediaType === "movie" ? "Movies" : "TV_Shows",
+      folderName,
+      ...(mediaType === "tv"
+        ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
+        : []),
+    );
+
+    await fs.mkdir(jellyfinTargetDir, { recursive: true });
+    const jellyfinTargetPath = path.join(
+      jellyfinTargetDir,
+      path.basename(file.path),
+    );
+
+    try {
+      await fs.link(sourcePath, jellyfinTargetPath);
+      console.log(`[jellyfin] ${jellyfinTargetPath} => ${sourcePath}`);
+      jellyfinPaths.push(jellyfinTargetPath);
+    } catch (e: unknown) {
+      const err = e as NodeJS.ErrnoException;
+      if (err.code === "EXDEV") {
+        // Cross-filesystem - fall back to symlink for Jellyfin (won't work ideally, but better than nothing)
+        console.warn(
+          `[jellyfin] EXDEV - falling back to symlink for ${jellyfinTargetPath}`,
+        );
+        try {
+          await fs.symlink(sourcePath, jellyfinTargetPath);
+          jellyfinPaths.push(jellyfinTargetPath);
+        } catch {
+          // Ignore if even symlink fails
+        }
+      } else if (err.code === "EEXIST") {
+        jellyfinPaths.push(jellyfinTargetPath);
+      } else {
+        console.error(`[jellyfin] Failed: ${err.message}`);
       }
     }
   }
 
-  return createdPaths;
+  return { plex: plexPaths, jellyfin: jellyfinPaths };
 }

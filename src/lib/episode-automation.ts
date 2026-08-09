@@ -78,26 +78,34 @@ async function getWatchlistCandidatesForDate(
 ): Promise<EpisodeCandidate[]> {
   const db = await openDb();
   const settings = await db.get(
-    "SELECT plex_url, plex_token, plex_tv_lib_id, tmdb_key FROM settings WHERE id = 1",
+    "SELECT plex_url, plex_token, plex_tv_lib_id, jellyfin_url, jellyfin_token, tmdb_key FROM settings WHERE id = 1",
   );
 
+  // Need at least one service configured
   if (
-    !settings?.plex_url ||
-    !settings?.plex_token ||
-    !settings?.plex_tv_lib_id ||
-    !settings?.tmdb_key
+    !settings?.tmdb_key ||
+    (!settings?.plex_url && !settings?.jellyfin_url)
   ) {
     return [];
   }
 
-  const plexRes = await fetch(
-    `${settings.plex_url}/library/sections/${settings.plex_tv_lib_id}/all?X-Plex-Token=${settings.plex_token}&includeGuids=1`,
-    { headers: { Accept: "application/json" } },
-  );
-  if (!plexRes.ok) return [];
+  // Use Plex or Jellyfin to get watchlist
+  const libraryUrl = settings.plex_url
+    ? `${settings.plex_url}/library/sections/${settings.plex_tv_lib_id}/all?X-Plex-Token=${settings.plex_token}&includeGuids=1`
+    : `${settings.jellyfin_url}/Users/Me/Items?parentId=${settings.jellyfin_tv_lib_id}&X-Emby-Token=${settings.jellyfin_token}`;
 
-  const plexData = await plexRes.json();
-  const allShows = plexData.MediaContainer?.Metadata || [];
+  const res = await fetch(libraryUrl, { headers: { Accept: "application/json" } });
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  
+  // Parse Plex or Jellyfin response
+  let allShows: any[] = [];
+  if (settings.plex_url) {
+    allShows = data.MediaContainer?.Metadata || [];
+  } else {
+    allShows = data.Items || [];
+  }
 
   const extractedTmdbIds = allShows
     .map((show: { Guid?: { id?: string }[] }) => {
@@ -240,7 +248,7 @@ async function downloadInfoHash(
 ): Promise<boolean> {
   const db = await openDb();
   const settings = await db.get(
-    "SELECT rd_token, plex_url, plex_token, plex_tv_lib_id, tmdb_key FROM settings WHERE id = 1",
+    "SELECT rd_token, plex_url, plex_token, plex_tv_lib_id, jellyfin_url, jellyfin_token, jellyfin_tv_lib_id, tmdb_key FROM settings WHERE id = 1",
   );
 
   if (!settings?.rd_token) return false;
@@ -326,7 +334,8 @@ async function downloadInfoHash(
     selectedInfoData = latest;
   }
 
-  await createSymlinks({
+  // Create symlinks for both Plex and Jellyfin
+  const { plex: plexPaths, jellyfin: jellyfinPaths } = await createSymlinks({
     infoData: selectedInfoData,
     title,
     tmdbId,
@@ -334,6 +343,24 @@ async function downloadInfoHash(
     season,
     tmdbKey: settings.tmdb_key || "",
   });
+
+  // Wait for files to appear
+  const checkPath = plexPaths[0] || jellyfinPaths[0];
+  if (checkPath) {
+    let fileExists = false;
+    let attempts = 0;
+    const maxAttempts = 24;
+
+    while (!fileExists && attempts < maxAttempts) {
+      try {
+        await access(checkPath);
+        fileExists = true;
+      } catch {
+        attempts++;
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+    }
+  }
 
   await db.run(
     `INSERT INTO requests
@@ -353,24 +380,59 @@ async function downloadInfoHash(
     ],
   );
 
-  if (settings.plex_url && settings.plex_token && settings.plex_tv_lib_id) {
-    setTimeout(async () => {
-      try {
-        const refreshRes = await fetch(
-          `${settings.plex_url}/library/sections/${settings.plex_tv_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
-        );
+  // Trigger library scans for both services
+  const scansTriggered: string[] = [];
 
-        if (refreshRes.ok) {
-          await notifyUsers({
-            type: "automation",
-            title: `${title} added to library`,
-            body: `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")} was added and Plex refresh was triggered.`,
-            targetPath: `/media/tv/${tmdbId}`,
-          });
-        }
-      } catch {
-        // no-op
+  // Plex scan
+  if (settings.plex_url && settings.plex_token && settings.plex_tv_lib_id) {
+    try {
+      const refreshRes = await fetch(
+        `${settings.plex_url}/library/sections/${settings.plex_tv_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
+      );
+
+      if (refreshRes.ok) {
+        scansTriggered.push("Plex");
+        console.log(`[automation] Plex scan triggered for ${title}`);
       }
+    } catch (e) {
+      console.error("Plex refresh failed:", e);
+    }
+  }
+
+  // Jellyfin scan
+  if (settings.jellyfin_url && settings.jellyfin_token && settings.jellyfin_tv_lib_id) {
+    try {
+      const scanRes = await fetch(
+        `${settings.jellyfin_url}/Library/Refresh?X-Emby-Token=${settings.jellyfin_token}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            LibraryOptions: {
+              Name: settings.jellyfin_tv_lib_id, // or fetch by name
+            },
+          }),
+        },
+      );
+
+      if (scanRes.ok) {
+        scansTriggered.push("Jellyfin");
+        console.log(`[automation] Jellyfin scan triggered for ${title}`);
+      }
+    } catch (e) {
+      console.error("Jellyfin refresh failed:", e);
+    }
+  }
+
+  // Send notification
+  if (scansTriggered.length > 0) {
+    setTimeout(async () => {
+      await notifyUsers({
+        type: "automation",
+        title: `${title} added to library`,
+        body: `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")} was added and ${scansTriggered.join(" & ")} refresh triggered.`,
+        targetPath: `/media/tv/${tmdbId}`,
+      });
     }, 5000);
   }
 

@@ -17,7 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await params; // Next.js 15: params must be awaited
+    const { id } = await params;
     const session = await getSession();
     if (session.role !== "admin")
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -35,7 +35,7 @@ export async function POST(
     );
 
     const settings = await db.get(
-      "SELECT rd_token, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, tmdb_key FROM settings WHERE id = 1",
+      "SELECT rd_token, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, jellyfin_url, jellyfin_token, tmdb_key FROM settings WHERE id = 1",
     );
 
     const rdParams = new URLSearchParams();
@@ -109,7 +109,8 @@ export async function POST(
       selectedInfoData = latest;
     }
 
-    const createdPaths = await createSymlinks({
+    // Create symlinks for both Plex and Jellyfin
+    const { plex: plexPaths, jellyfin: jellyfinPaths } = await createSymlinks({
       infoData: selectedInfoData,
       title: req.title || "Unknown",
       tmdbId: req.tmdb_id || null,
@@ -118,8 +119,9 @@ export async function POST(
       tmdbKey: settings.tmdb_key || "",
     });
 
-    if (createdPaths.length > 0) {
-      const checkPath = createdPaths[0];
+    // Wait for files to appear on disk
+    const checkPath = plexPaths[0] || jellyfinPaths[0];
+    if (checkPath) {
       let fileExists = false;
       let attempts = 0;
       const maxAttempts = 24;
@@ -136,11 +138,15 @@ export async function POST(
     }
 
     const mediaType = req.media_type === "tv" ? "tv" : "movie";
-    const sectionId =
-      mediaType === "tv" ? settings.plex_tv_lib_id : settings.plex_lib_id;
+    let plexSuccess = false;
+    let jellyfinSuccess = false;
 
+    // Trigger Plex library scan
     if (settings.plex_url && settings.plex_token) {
       try {
+        const sectionId =
+          mediaType === "tv" ? settings.plex_tv_lib_id : settings.plex_lib_id;
+        
         const refreshRes = sectionId
           ? await fetch(
               `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
@@ -150,21 +156,78 @@ export async function POST(
             );
 
         if (refreshRes.ok) {
-          await notifyUsers({
-            type: "request",
-            title: `${req.title} added to library`,
-            body: `${mediaType === "tv" ? "Series" : "Movie"} request was approved and Plex refresh was triggered.`,
-            targetPath: req.tmdb_id
-              ? `/media/${mediaType}/${req.tmdb_id}`
-              : "/requests",
-          });
+          plexSuccess = true;
+          console.log(`[approve] Plex scan triggered for ${req.title}`);
+        }
+      } catch (e) {
+        console.error("Plex refresh failed:", e);
+      }
+    }
 
-          if (!sectionId) {
-            await db.run(
-              `UPDATE requests SET status = 'Requested' WHERE id = ?`,
-              [id],
+    // Trigger Jellyfin library scan
+    if (settings.jellyfin_url && settings.jellyfin_token) {
+      try {
+        const libraryType = mediaType === "tv" ? "series" : "movie";
+        
+        // Get libraries and find matching one
+        const librariesRes = await fetch(
+          `${settings.jellyfin_url}/Library/VirtualFolders?X-Emby-Token=${settings.jellyfin_token}`,
+        );
+        
+        if (librariesRes.ok) {
+          const libraries = await librariesRes.json();
+          const targetLibrary = libraries.find(
+            (lib: any) =>
+              lib.LibraryOptions?.ContentType === libraryType ||
+              lib.Name.toLowerCase().includes(libraryType),
+          );
+
+          if (targetLibrary?.Name) {
+            const scanRes = await fetch(
+              `${settings.jellyfin_url}/Library/Refresh?X-Emby-Token=${settings.jellyfin_token}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  LibraryOptions: {
+                    Name: targetLibrary.Name,
+                  },
+                }),
+              },
             );
-          } else {
+
+            if (scanRes.ok) {
+              jellyfinSuccess = true;
+              console.log(`[approve] Jellyfin scan triggered for ${req.title}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Jellyfin refresh failed:", e);
+      }
+    }
+
+    // Send notification
+    await notifyUsers({
+      type: "request",
+      title: `${req.title} added to library`,
+      body: `${mediaType === "tv" ? "Series" : "Movie"} request was approved and library scans triggered.`,
+      targetPath: req.tmdb_id
+        ? `/media/${mediaType}/${req.tmdb_id}`
+        : "/requests",
+    });
+
+    // Update status based on scan results
+    const anyScanSuccess = plexSuccess || jellyfinSuccess;
+    
+    if (anyScanSuccess) {
+      // Try to verify availability in Plex (if Plex scan ran)
+      if (plexSuccess && settings.plex_url && settings.plex_token) {
+        try {
+          const sectionId =
+            mediaType === "tv" ? settings.plex_tv_lib_id : settings.plex_lib_id;
+
+          if (sectionId) {
             const plexItemsRes = await fetch(
               `${settings.plex_url}/library/sections/${sectionId}/all?includeGuids=1&X-Plex-Token=${settings.plex_token}`,
               { headers: { Accept: "application/json" } },
@@ -188,35 +251,42 @@ export async function POST(
                 );
               });
 
-              if (found) {
-                await db.run(
-                  `UPDATE requests SET status = 'Available' WHERE id = ?`,
-                  [id],
-                );
-              } else {
-                await db.run(
-                  `UPDATE requests SET status = 'Requested' WHERE id = ?`,
-                  [id],
-                );
-              }
+              await db.run(
+                `UPDATE requests SET status = ? WHERE id = ?`,
+                [found ? "Available" : "Requested", id],
+              );
             } else {
               await db.run(
                 `UPDATE requests SET status = 'Requested' WHERE id = ?`,
                 [id],
               );
             }
+          } else {
+            await db.run(
+              `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+              [id],
+            );
           }
+        } catch (e) {
+          console.error("Plex verification failed:", e);
+          await db.run(
+            `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+            [id],
+          );
         }
-      } catch (e) {
-        console.error("Plex refresh failed:", e);
-        await db.run(`UPDATE requests SET status = 'Requested' WHERE id = ?`, [
-          id,
-        ]);
+      } else {
+        // No Plex verification possible, mark as Requested
+        await db.run(
+          `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+          [id],
+        );
       }
     } else {
-      await db.run(`UPDATE requests SET status = 'Requested' WHERE id = ?`, [
-        id,
-      ]);
+      // No scans succeeded
+      await db.run(
+        `UPDATE requests SET status = 'Requested' WHERE id = ?`,
+        [id],
+      );
     }
 
     return NextResponse.json({ success: true });
