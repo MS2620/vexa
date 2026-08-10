@@ -21,6 +21,22 @@ interface SymlinkParams {
   tmdbKey: string;
 }
 
+// crude resolution classifier from a filename
+function classifyResolution(p: string): string {
+  const s = p.toLowerCase();
+  if (s.includes("2160p") || s.includes("4k") || s.includes("uhd")) return "4K";
+  if (s.includes("1080p")) return "1080p";
+  if (s.includes("720p")) return "720p";
+  return "SD";
+}
+
+// sanity-clean label (optional)
+function buildVersionLabel(filePath: string): string {
+  const res = classifyResolution(filePath);
+  // you can add more info here later (HDR, DV, etc)
+  return res;
+}
+
 export async function createSymlinks({
   infoData,
   title,
@@ -36,11 +52,13 @@ export async function createSymlinks({
   try {
     await fs.access(DEBRID_MOUNT);
   } catch {
-    console.warn(`[symlinks] ${DEBRID_MOUNT} not accessible — skipping`);
+    console.warn(
+      `[symlinks] ${DEBRID_MOUNT} not accessible — skipping symlink creation`,
+    );
     return { plex: plexPaths, jellyfin: jellyfinPaths };
   }
 
-  // Get year for folder name
+  // Fetch year from TMDB
   let year = "";
   if (tmdbId && tmdbKey) {
     try {
@@ -58,82 +76,92 @@ export async function createSymlinks({
     }
   }
 
-  const folderName = year ? `${title} (${year})` : title;
+  const baseName = year ? `${title} (${year})` : title;
 
+  // Only selected video files
   const videoFiles = infoData.files.filter(
     (f) => f.selected === 1 && /\.(mkv|mp4|avi)$/i.test(f.path),
   );
 
   if (videoFiles.length === 0) {
-    console.warn(`[symlinks] No selected video files for "${title}"`);
+    console.warn(`[symlinks] No selected video files found for "${title}"`);
     return { plex: plexPaths, jellyfin: jellyfinPaths };
   }
 
   for (const file of videoFiles) {
-    // Normalize source path, including flat torrents wrapped by zurg
+    // Build source path (handles flat vs folder torrents)
     const parts = file.path.replace(/^\//, "").split("/");
     const sourcePath =
       parts.length === 1
         ? path.join(DEBRID_MOUNT, infoData.filename, parts[0])
         : path.join(DEBRID_MOUNT, file.path);
 
-    // ---------- Plex (symlinks) ----------
-    const plexTargetDir = path.join(
-      PLEX_SYMLINK_ROOT,
-      mediaType === "movie" ? "Movies" : "TV_Shows",
-      folderName,
-      ...(mediaType === "tv"
-        ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
-        : []),
-    );
-    await fs.mkdir(plexTargetDir, { recursive: true });
+    const ext = path.extname(file.path) || ".mkv";
+    const versionLabel = buildVersionLabel(file.path);
 
-    const plexTargetPath = path.join(plexTargetDir, path.basename(file.path));
-    try {
-      await fs.symlink(sourcePath, plexTargetPath);
-      console.log(`[plex] ${plexTargetPath} → ${sourcePath}`);
-      plexPaths.push(plexTargetPath);
-    } catch (e: any) {
-      if (e.code === "EEXIST") {
+    // ---------- Plex: keep scene-friendly names ----------
+    {
+      const plexTargetDir = path.join(
+        PLEX_SYMLINK_ROOT,
+        mediaType === "movie" ? "Movies" : "TV_Shows",
+        baseName,
+        ...(mediaType === "tv"
+          ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
+          : []),
+      );
+      await fs.mkdir(plexTargetDir, { recursive: true });
+
+      const plexTargetPath = path.join(
+        plexTargetDir,
+        path.basename(file.path),
+      );
+
+      try {
+        await fs.symlink(sourcePath, plexTargetPath);
+        console.log(`[plex] ${plexTargetPath} → ${sourcePath}`);
         plexPaths.push(plexTargetPath);
-      } else {
-        console.error(`[plex] symlink failed: ${e.message}`);
+      } catch (e: any) {
+        if (e.code === "EEXIST") {
+          plexPaths.push(plexTargetPath);
+        } else {
+          console.error(`[plex] symlink failed: ${e.message}`);
+        }
       }
     }
 
-    // ---------- Jellyfin (hard links) ----------
-    const jfTargetDir = path.join(
-      JELLYFIN_LINK_ROOT,
-      mediaType === "movie" ? "Movies" : "TV_Shows",
-      folderName,
-      ...(mediaType === "tv"
-        ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
-        : []),
-    );
-    await fs.mkdir(jfTargetDir, { recursive: true });
+    // ---------- Jellyfin: TMDB-based names + version suffix ----------
+    // Only do this if you're actually using a Jellyfin link tree.
+    if (JELLYFIN_LINK_ROOT) {
+      const jfTargetDir = path.join(
+        JELLYFIN_LINK_ROOT,
+        mediaType === "movie" ? "Movies" : "TV_Shows",
+        baseName,
+        ...(mediaType === "tv"
+          ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
+          : []),
+      );
+      await fs.mkdir(jfTargetDir, { recursive: true });
 
-    const jfTargetPath = path.join(jfTargetDir, path.basename(file.path));
+      // Jellyfin grouping rule: file base name must exactly match folder, suffix after " - "
+      // e.g. "Up (2009) - 4K.mkv"
+      const jfFileName =
+        versionLabel && versionLabel !== "SD"
+          ? `${baseName} - ${versionLabel}${ext}`
+          : `${baseName}${ext}`;
 
-    try {
-      await fs.link(sourcePath, jfTargetPath); // HARD LINK
-      console.log(`[jellyfin] ${jfTargetPath} => ${sourcePath}`);
-      jellyfinPaths.push(jfTargetPath);
-    } catch (e: any) {
-      if (e.code === "EEXIST") {
+      const jfTargetPath = path.join(jfTargetDir, jfFileName);
+
+      try {
+        // If you ever move to a local cache on same FS, switch this to hard link.
+        await fs.symlink(sourcePath, jfTargetPath);
+        console.log(`[jellyfin] ${jfTargetPath} → ${sourcePath}`);
         jellyfinPaths.push(jfTargetPath);
-      } else if (e.code === "EXDEV") {
-        // Cross-filesystem – fall back to symlink as last resort
-        console.warn(
-          `[jellyfin] EXDEV for ${jfTargetPath}, falling back to symlink`,
-        );
-        try {
-          await fs.symlink(sourcePath, jfTargetPath);
+      } catch (e: any) {
+        if (e.code === "EEXIST") {
           jellyfinPaths.push(jfTargetPath);
-        } catch (se: any) {
-          console.error(`[jellyfin] fallback symlink failed: ${se.message}`);
+        } else {
+          console.error(`[jellyfin] symlink failed: ${e.message}`);
         }
-      } else {
-        console.error(`[jellyfin] hard link failed: ${e.message}`);
       }
     }
   }
