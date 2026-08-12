@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
 import { Film, ShieldBan } from "lucide-react";
@@ -17,9 +17,9 @@ export default function MediaDetailPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [plexUrl, setPlexUrl] = useState("");
-  const [expandedSeasons, setExpandedSeasons] = useState<
-    Record<number, boolean>
-  >({});
+  const [expandedSeasons, setExpandedSeasons] = useState<Record<number, boolean>>(
+    {},
+  );
 
   const [streams, setStreams] = useState<any[]>([]);
   const [streamModal, setStreamModal] = useState<{
@@ -27,7 +27,12 @@ export default function MediaDetailPage() {
     episode?: number;
   } | null>(null);
   const [loadingStreams, setLoadingStreams] = useState(false);
+
+  // Currently-downloading infoHash (for button state)
   const [downloadingHash, setDownloadingHash] = useState<string | null>(null);
+  // Track hashes that are already in-flight to prevent duplicate calls
+  const inFlightHashesRef = useRef<Set<string>>(new Set());
+
   const [filterRes, setFilterRes] = useState<string>("all");
   const [filterLang, setFilterLang] = useState<string>("all");
 
@@ -98,7 +103,14 @@ export default function MediaDetailPage() {
   };
 
   const handleDownload = async (infoHash: string, streamIndex: number = 0) => {
+    // Guard: if this hash is already in-flight, ignore
+    if (inFlightHashesRef.current.has(infoHash)) {
+      return;
+    }
+
+    inFlightHashesRef.current.add(infoHash);
     setDownloadingHash(infoHash);
+
     try {
       const title = data.detail.title || data.detail.name;
       const res = await fetch("/api/request", {
@@ -114,19 +126,25 @@ export default function MediaDetailPage() {
           episode: streamModal?.episode || null,
         }),
       });
+
       const resData = await res.json();
       if (!resData.success) {
         if (resData.code === "infringing_file") {
           const nextStream = streams[streamIndex + 1];
           if (nextStream?.infoHash) {
+            // allow the next hash to be attempted
+            inFlightHashesRef.current.delete(infoHash);
             setDownloadingHash(null);
             await new Promise((resolve) => setTimeout(resolve, 500));
             return handleDownload(nextStream.infoHash, streamIndex + 1);
-          } else
+          } else {
             toast.error(
               "All available streams are blocked by Real-Debrid for this title.",
             );
-        } else toast.error(`Failed: ${resData.error}`);
+          }
+        } else {
+          toast.error(`Failed: ${resData.error}`);
+        }
       } else {
         setStreamModal(null);
         toast.success(
@@ -139,6 +157,7 @@ export default function MediaDetailPage() {
       toast.error("Something went wrong. Check the console.");
       console.error(err);
     } finally {
+      inFlightHashesRef.current.delete(infoHash);
       setDownloadingHash(null);
     }
   };
