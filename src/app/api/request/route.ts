@@ -5,6 +5,7 @@ import { getSession } from "@/lib/session";
 import { createSymlinks } from "@/lib/symlinks";
 import { addLog } from "@/lib/logger";
 import { notifyUsers } from "@/lib/notifications";
+import { createDebridClient, DebridFile } from "@/lib/debrid/client";
 
 export async function POST(req: Request) {
   try {
@@ -22,12 +23,22 @@ export async function POST(req: Request) {
 
     const db = await openDb();
     const settings = await db.get(
-      "SELECT rd_token, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, jellyfin_url, jellyfin_token, tmdb_key FROM settings WHERE id = 1",
+      `SELECT debrid_provider, rd_token, torbox_api_key,
+              plex_url, plex_token, plex_lib_id, plex_tv_lib_id,
+              jellyfin_url, jellyfin_token, tmdb_key
+       FROM settings WHERE id = 1`,
     );
 
-    if (!settings?.rd_token) {
+    let client;
+    try {
+      client = createDebridClient({
+        provider: settings?.debrid_provider || "realdebrid",
+        rd_token: settings?.rd_token || undefined,
+        torbox_api_key: settings?.torbox_api_key || undefined,
+      });
+    } catch (e: any) {
       return NextResponse.json(
-        { success: false, error: "Real-Debrid token not configured" },
+        { success: false, error: e?.message || "Debrid provider not configured" },
         { status: 400 },
       );
     }
@@ -42,7 +53,7 @@ export async function POST(req: Request) {
       : null;
     const isAdmin = (currentUser?.role || session.role) === "admin";
 
-    // ✅ Stop here for non-admins — save to DB and return pending
+    // Stop here for non-admins — save to DB and return pending
     if (!isAdmin) {
       await db.run(
         `
@@ -100,67 +111,54 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, pending: true });
     }
 
-    // 1. Add Magnet to Real-Debrid
+    // 1. Add magnet to Debrid (TorBox / RD)
     await addLog("info", `Starting process for ${title}`, {
       infoHash,
       requestedBy,
     });
     const magnet = `magnet:?xt=urn:btih:${infoHash}`;
-    const params = new URLSearchParams();
-    params.append("magnet", magnet);
 
-    const rdRes = await fetch(
-      "https://api.real-debrid.com/rest/1.0/torrents/addMagnet",
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${settings.rd_token}` },
-        body: params,
-      },
-    );
-
-    const rdData = await rdRes.json();
-
-    if (rdData.error) {
-      await addLog("warn", `Real-Debrid rejected ${title}`, {
-        error: rdData.error,
+    let torrentId: string | number;
+    try {
+      const added = await client.addMagnet(magnet, title || "Unknown");
+      torrentId = added.id;
+    } catch (e: any) {
+      await addLog("warn", `Debrid provider rejected ${title}`, {
+        error: e?.message,
       });
       return NextResponse.json(
         {
           success: false,
-          error: `Real-Debrid: ${rdData.error}`,
-          code: rdData.error,
+          error: `Debrid provider: ${e?.message || "failed to add magnet"}`,
         },
         { status: 400 },
       );
     }
 
-    if (!rdData.id) {
-      await addLog("error", `Real-Debrid returned no torrent ID for ${title}`, {
-        response: rdData,
-      });
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Real-Debrid returned no torrent ID. Response: ${JSON.stringify(rdData)}`,
-        },
-        { status: 400 },
-      );
-    }
-
-    // 2. Wait for RD to process the magnet, then fetch torrent info
+    // 2. Wait for provider to process the magnet, then fetch torrent info
     await addLog(
       "info",
-      `Waiting for Real-Debrid to process magnet for ${title}...`,
+      `Waiting for debrid provider to process magnet for ${title}...`,
     );
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    const infoRes = await fetch(
-      `https://api.real-debrid.com/rest/1.0/torrents/info/${rdData.id}`,
-      { headers: { Authorization: `Bearer ${settings.rd_token}` } },
-    );
-    const infoData = await infoRes.json();
+    let info;
+    try {
+      info = await client.getTorrentInfo(torrentId);
+    } catch (e: any) {
+      await addLog("error", `Failed to fetch torrent info for ${title}`, {
+        error: e?.message,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Failed to fetch torrent info: ${e?.message || "unknown error"}`,
+        },
+        { status: 400 },
+      );
+    }
 
-    if (!infoData.files || infoData.files.length === 0) {
+    if (!info.files || info.files.length === 0) {
       await addLog(
         "warn",
         `No files found in torrent for ${title}, waiting for metadata...`,
@@ -176,59 +174,57 @@ export async function POST(req: Request) {
     }
 
     // 3. Select all valid video files
-    const videoFiles = infoData.files.filter((f: any) => {
+    const files = info.files as DebridFile[];
+
+    const videoFiles = files.filter((f) => {
       const isVideo = f.path.match(/\.(mkv|mp4|avi)$/i);
       const isNotSample = !f.path.toLowerCase().includes("sample");
       const isLargeEnough = f.bytes > 30 * 1024 * 1024; // > 30MB
       return isVideo && isNotSample && isLargeEnough;
     });
 
-    const filesToSelect =
+    const fileIds =
       videoFiles.length > 0
-        ? videoFiles.map((f: any) => f.id).join(",")
-        : infoData.files
-            .sort((a: any, b: any) => b.bytes - a.bytes)[0]
-            .id.toString();
-
-    const fileParams = new URLSearchParams();
-    fileParams.append("files", filesToSelect);
+        ? videoFiles.map((f) => f.id)
+        : [files.sort((a, b) => b.bytes - a.bytes)[0].id];
 
     await addLog(
       "info",
-      `Selecting ${videoFiles.length > 0 ? videoFiles.length : 1} file(s) for ${title} in Real-Debrid`,
+      `Selecting ${videoFiles.length > 0 ? videoFiles.length : 1} file(s) for ${title}`,
     );
 
-    await fetch(
-      `https://api.real-debrid.com/rest/1.0/torrents/selectFiles/${rdData.id}`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${settings.rd_token}` },
-        body: fileParams,
-      },
-    );
+    try {
+      await client.selectFiles(torrentId, fileIds);
+    } catch (e: any) {
+      await addLog("warn", `selectFiles failed for ${title}`, {
+        error: e?.message,
+      });
+      // continue anyway — some providers no-op this
+    }
 
-    // 4. Re-fetch torrent info after file selection
-    let selectedInfoData = infoData;
+    // 4. Re-fetch torrent info after file selection (mostly useful for RD)
+    let selectedInfoData = info;
     for (let attempt = 0; attempt < 4; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 750));
 
-      const selectedInfoRes = await fetch(
-        `https://api.real-debrid.com/rest/1.0/torrents/info/${rdData.id}`,
-        { headers: { Authorization: `Bearer ${settings.rd_token}` } },
-      );
-      const latest = await selectedInfoRes.json();
-
-      if (latest?.files?.some((f: any) => f.selected === 1)) {
+      try {
+        const latest = await client.getTorrentInfo(torrentId);
+        if (latest?.files?.some((f) => f.selected === 1)) {
+          selectedInfoData = latest;
+          break;
+        }
         selectedInfoData = latest;
+      } catch {
         break;
       }
-
-      selectedInfoData = latest;
     }
 
     // 5. Create symlinks for both Plex and Jellyfin
     createSymlinks({
-      infoData: selectedInfoData,
+      infoData: {
+        filename: title || "Unknown",
+        files: selectedInfoData.files as DebridFile[],
+      },
       title: title || "Unknown",
       tmdbId: tmdbId || null,
       mediaType: requestedMediaType,
@@ -300,11 +296,9 @@ export async function POST(req: Request) {
             `Triggering Jellyfin library scan for ${title} (${requestedMediaType})`,
           );
 
-          // Determine library type
           const libraryType = requestedMediaType === "tv" ? "series" : "movie";
 
           try {
-            // Get library ID by name/type
             const librariesRes = await fetch(
               `${settings.jellyfin_url}/Library/VirtualFolders?X-Emby-Token=${settings.jellyfin_token}`,
             );
