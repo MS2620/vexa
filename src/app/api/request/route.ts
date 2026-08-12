@@ -80,10 +80,11 @@ export async function POST(req: Request) {
       });
 
       try {
-        const admins = await db.all<{ username: string }>(
+        const admins = await db.all<{ username: string }[]>(
           "SELECT username FROM users WHERE role = 'admin' AND username IS NOT NULL AND TRIM(username) != ''",
         );
-        const adminUsernames = admins
+
+        const adminUsernames = (admins || [])
           .map((row) => row.username.trim())
           .filter(Boolean);
 
