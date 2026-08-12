@@ -1,4 +1,3 @@
-// lib/debrid/realdebrid.ts
 import type { DebridClient, DebridFile, DebridTorrentInfo } from "./client";
 
 const RD_BASE = "https://api.real-debrid.com/rest/1.0";
@@ -75,6 +74,8 @@ export class RealDebridClient implements DebridClient {
 
     return {
       id: idOrHash,
+      hash: data.hash,
+      filename: data.filename,
       status: data.status,
       files,
     };

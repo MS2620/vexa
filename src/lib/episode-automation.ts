@@ -341,7 +341,7 @@ async function downloadInfoHash(
 
   // Create symlinks/hardlinks via existing helper
   const { plex: plexPaths, jellyfin: jellyfinPaths } = await createSymlinks({
-    infoData: { filename: title, files: info.files },
+    infoData: { filename: info.filename || title, files: info.files },
     title,
     tmdbId,
     mediaType: "tv",

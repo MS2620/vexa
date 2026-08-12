@@ -107,7 +107,7 @@ export async function POST(
 
     // Map DebridTorrentInfo into the shape createSymlinks expects
     const infoData: { filename: string; files: DebridFile[] } = {
-      filename: req.title || "Unknown",
+      filename: info.filename || req.title || "Unknown",
       files: info.files as DebridFile[],
     };
 

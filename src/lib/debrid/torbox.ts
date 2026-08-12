@@ -83,6 +83,7 @@ export class TorboxClient implements DebridClient {
     return {
       id: record?.id ?? record?.torrent_id ?? idOrHash,
       hash: record?.hash,
+      filename: record?.name,
       status: record?.download_state ?? record?.status ?? "unknown",
       files,
     };

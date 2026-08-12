@@ -11,6 +11,7 @@ export type DebridFile = {
 export type DebridTorrentInfo = {
   id: string | number;
   hash?: string;
+  filename?: string;
   status: string;
   files: DebridFile[];
 };

@@ -222,7 +222,7 @@ export async function POST(req: Request) {
     // 5. Create symlinks for both Plex and Jellyfin
     createSymlinks({
       infoData: {
-        filename: title || "Unknown",
+        filename: selectedInfoData.filename || title || "Unknown",
         files: selectedInfoData.files as DebridFile[],
       },
       title: title || "Unknown",
