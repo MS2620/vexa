@@ -12,6 +12,37 @@ type RDFile = {
   selected?: number;
 };
 
+let lastRdCall = 0;
+const RD_MIN_INTERVAL_MS = 300; // ~3 RD calls/sec max
+
+async function rdFetch(
+  url: string,
+  init: RequestInit,
+  token: string,
+): Promise<Response> {
+  const now = Date.now();
+  const wait = lastRdCall + RD_MIN_INTERVAL_MS - now;
+  if (wait > 0) {
+    await new Promise((r) => setTimeout(r, wait));
+  }
+  lastRdCall = Date.now();
+
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(init.headers || {}),
+    },
+  });
+
+  if (res.status === 429) {
+    console.warn("[rd] 429 too_many_requests — backing off 5s");
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+
+  return res;
+}
+
 export async function POST(
   _: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -19,16 +50,28 @@ export async function POST(
   try {
     const { id } = await params;
     const session = await getSession();
-    if (session.role !== "admin")
+    if (session.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const db = await openDb();
+
+    // Load the request once, and make this route idempotent.
     const req = await db.get(
-      "SELECT * FROM requests WHERE id = ? AND status = 'Pending Approval' AND approved = 0",
+      "SELECT * FROM requests WHERE id = ?",
       [id],
     );
-    if (!req) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    if (!req) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    // If already not pending, just say "ok" and exit — prevents double processing.
+    if (req.status !== "Pending Approval" || req.approved === 1) {
+      return NextResponse.json({ success: true, alreadyHandled: true });
+    }
+
+    // Transition to Processing only once.
     await db.run(
       `UPDATE requests SET status = 'Processing', approved = 1 WHERE id = ?`,
       [id],
@@ -38,19 +81,28 @@ export async function POST(
       "SELECT rd_token, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, jellyfin_url, jellyfin_token, tmdb_key FROM settings WHERE id = 1",
     );
 
+    if (!settings?.rd_token) {
+      return NextResponse.json(
+        { error: "Real-Debrid token not configured" },
+        { status: 400 },
+      );
+    }
+
     const rdParams = new URLSearchParams();
     rdParams.append("magnet", `magnet:?xt=urn:btih:${req.info_hash}`);
-    const rdRes = await fetch(
+
+    const rdRes = await rdFetch(
       "https://api.real-debrid.com/rest/1.0/torrents/addMagnet",
       {
         method: "POST",
-        headers: { Authorization: `Bearer ${settings.rd_token}` },
         body: rdParams,
       },
+      settings.rd_token,
     );
     const rdData = await rdRes.json();
 
     if (rdData.error) {
+      // Do not retry this torrent here; return error to UI.
       return NextResponse.json(
         { error: `RD: ${rdData.error}` },
         { status: 400 },
@@ -59,9 +111,10 @@ export async function POST(
 
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    const infoRes = await fetch(
+    const infoRes = await rdFetch(
       `https://api.real-debrid.com/rest/1.0/torrents/info/${rdData.id}`,
-      { headers: { Authorization: `Bearer ${settings.rd_token}` } },
+      { method: "GET" },
+      settings.rd_token,
     );
     const infoData = await infoRes.json();
 
@@ -81,13 +134,13 @@ export async function POST(
 
       const fileParams = new URLSearchParams();
       fileParams.append("files", filesToSelect);
-      await fetch(
+      await rdFetch(
         `https://api.real-debrid.com/rest/1.0/torrents/selectFiles/${rdData.id}`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${settings.rd_token}` },
           body: fileParams,
         },
+        settings.rd_token,
       );
     }
 
@@ -95,9 +148,10 @@ export async function POST(
     for (let attempt = 0; attempt < 4; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 750));
 
-      const selectedInfoRes = await fetch(
+      const selectedInfoRes = await rdFetch(
         `https://api.real-debrid.com/rest/1.0/torrents/info/${rdData.id}`,
-        { headers: { Authorization: `Bearer ${settings.rd_token}` } },
+        { method: "GET" },
+        settings.rd_token,
       );
       const latest = await selectedInfoRes.json();
 
@@ -114,7 +168,7 @@ export async function POST(
       infoData: selectedInfoData,
       title: req.title || "Unknown",
       tmdbId: req.tmdb_id || null,
-      mediaType: req.media_type || "movie",
+      mediaType: (req.media_type as "movie" | "tv") || "movie",
       season: req.season || null,
       tmdbKey: settings.tmdb_key || "",
     });
@@ -146,7 +200,7 @@ export async function POST(
       try {
         const sectionId =
           mediaType === "tv" ? settings.plex_tv_lib_id : settings.plex_lib_id;
-        
+
         const refreshRes = sectionId
           ? await fetch(
               `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
@@ -168,12 +222,11 @@ export async function POST(
     if (settings.jellyfin_url && settings.jellyfin_token) {
       try {
         const libraryType = mediaType === "tv" ? "series" : "movie";
-        
-        // Get libraries and find matching one
+
         const librariesRes = await fetch(
           `${settings.jellyfin_url}/Library/VirtualFolders?X-Emby-Token=${settings.jellyfin_token}`,
         );
-        
+
         if (librariesRes.ok) {
           const libraries = await librariesRes.json();
           const targetLibrary = libraries.find(
@@ -207,11 +260,13 @@ export async function POST(
       }
     }
 
-    // Send notification
+    // Notify users
     await notifyUsers({
       type: "request",
       title: `${req.title} added to library`,
-      body: `${mediaType === "tv" ? "Series" : "Movie"} request was approved and library scans triggered.`,
+      body: `${
+        mediaType === "tv" ? "Series" : "Movie"
+      } request was approved and library scans triggered.`,
       targetPath: req.tmdb_id
         ? `/media/${mediaType}/${req.tmdb_id}`
         : "/requests",
@@ -219,7 +274,7 @@ export async function POST(
 
     // Update status based on scan results
     const anyScanSuccess = plexSuccess || jellyfinSuccess;
-    
+
     if (anyScanSuccess) {
       // Try to verify availability in Plex (if Plex scan ran)
       if (plexSuccess && settings.plex_url && settings.plex_token) {
@@ -275,14 +330,12 @@ export async function POST(
           );
         }
       } else {
-        // No Plex verification possible, mark as Requested
         await db.run(
           `UPDATE requests SET status = 'Requested' WHERE id = ?`,
           [id],
         );
       }
     } else {
-      // No scans succeeded
       await db.run(
         `UPDATE requests SET status = 'Requested' WHERE id = ?`,
         [id],
@@ -304,8 +357,9 @@ export async function DELETE(
   try {
     const { id } = await params;
     const session = await getSession();
-    if (session.role !== "admin")
+    if (session.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const db = await openDb();
     const result = await db.run(
