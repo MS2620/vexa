@@ -119,6 +119,7 @@ export async function POST(
       season: req.season || null,
       episode: req.episode || null,
       tmdbKey: settings.tmdb_key || "",
+      provider: settings.debrid_provider || "realdebrid", // ← ADD THIS
     });
 
     // Wait for files to appear on disk

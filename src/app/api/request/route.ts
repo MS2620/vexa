@@ -231,6 +231,7 @@ export async function POST(req: Request) {
       season: season || null,
       episode: episode || null,
       tmdbKey: settings.tmdb_key || "",
+      provider: settings.debrid_provider || "realdebrid",
     })
       .then(async ({ plex: plexPaths, jellyfin: jellyfinPaths }) => {
         await addLog(

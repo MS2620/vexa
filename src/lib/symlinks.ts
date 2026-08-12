@@ -2,9 +2,12 @@ import path from "path";
 import fs from "fs/promises";
 import type { DebridFile } from "./debrid/client";
 
-const DEBRID_MOUNT = process.env.DEBRID_MOUNT || "/mnt/zurg/__all__";
-const PLEX_SYMLINK_ROOT = process.env.PLEX_SYMLINK_ROOT || "/mnt/plex_symlinks";
-const JELLYFIN_LINK_ROOT = process.env.JELLYFIN_LINK_ROOT || "/mnt/jellyfin_links";
+const RD_MOUNT = process.env.DEBRID_MOUNT || "/mnt/zurg/__all__";
+const TORBOX_MOUNT = process.env.TORBOX_MOUNT || "/mnt/torbox";
+const PLEX_SYMLINK_ROOT =
+  process.env.PLEX_SYMLINK_ROOT || "/mnt/plex_symlinks";
+const JELLYFIN_LINK_ROOT =
+  process.env.JELLYFIN_LINK_ROOT || "/mnt/jellyfin_links";
 
 interface SymlinkParams {
   infoData: { filename: string; files: DebridFile[] };
@@ -14,6 +17,7 @@ interface SymlinkParams {
   season: number | null;
   episode?: number | null;
   tmdbKey: string;
+  provider?: "realdebrid" | "torbox";
 }
 
 function classifyResolution(p: string): string {
@@ -40,18 +44,27 @@ function resolveEpisodeTag(
   // Match S01E06, s1e6, 1x06, etc.
   const seMatch = name.match(/[Ss](\d{1,2})[Ee](\d{1,3})/);
   if (seMatch) {
-    return { season: parseInt(seMatch[1], 10), episode: parseInt(seMatch[2], 10) };
+    return {
+      season: parseInt(seMatch[1], 10),
+      episode: parseInt(seMatch[2], 10),
+    };
   }
 
   const xMatch = name.match(/(\d{1,2})[xX](\d{1,3})/);
   if (xMatch) {
-    return { season: parseInt(xMatch[1], 10), episode: parseInt(xMatch[2], 10) };
+    return {
+      season: parseInt(xMatch[1], 10),
+      episode: parseInt(xMatch[2], 10),
+    };
   }
 
   // Match standalone Exx when season is already known from context
   const eOnlyMatch = name.match(/[Ee](\d{2,3})(?!\d)/);
   if (eOnlyMatch && fallbackSeason) {
-    return { season: fallbackSeason, episode: parseInt(eOnlyMatch[1], 10) };
+    return {
+      season: fallbackSeason,
+      episode: parseInt(eOnlyMatch[1], 10),
+    };
   }
 
   return {
@@ -61,7 +74,10 @@ function resolveEpisodeTag(
 }
 
 function episodeTag(season: number, episode: number): string {
-  return `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
+  return `S${String(season).padStart(2, "0")}E${String(episode).padStart(
+    2,
+    "0",
+  )}`;
 }
 
 export async function createSymlinks({
@@ -72,9 +88,12 @@ export async function createSymlinks({
   season,
   episode,
   tmdbKey,
+  provider = "realdebrid",
 }: SymlinkParams): Promise<{ plex: string[]; jellyfin: string[] }> {
   const plexPaths: string[] = [];
   const jellyfinPaths: string[] = [];
+
+  const DEBRID_MOUNT = provider === "torbox" ? TORBOX_MOUNT : RD_MOUNT;
 
   try {
     await fs.access(DEBRID_MOUNT);

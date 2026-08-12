@@ -348,6 +348,7 @@ async function downloadInfoHash(
     season,
     episode,
     tmdbKey: settings.tmdb_key || "",
+    provider: settings.debrid_provider || "realdebrid",
   });
 
   // Wait for files to appear
