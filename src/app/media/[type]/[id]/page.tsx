@@ -17,9 +17,9 @@ export default function MediaDetailPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [plexUrl, setPlexUrl] = useState("");
-  const [expandedSeasons, setExpandedSeasons] = useState<Record<number, boolean>>(
-    {},
-  );
+  const [expandedSeasons, setExpandedSeasons] = useState<
+    Record<number, boolean>
+  >({});
 
   const [streams, setStreams] = useState<any[]>([]);
   const [streamModal, setStreamModal] = useState<{
@@ -28,9 +28,8 @@ export default function MediaDetailPage() {
   } | null>(null);
   const [loadingStreams, setLoadingStreams] = useState(false);
 
-  // Currently-downloading infoHash (for button state)
+  // download state + guard
   const [downloadingHash, setDownloadingHash] = useState<string | null>(null);
-  // Track hashes that are already in-flight to prevent duplicate calls
   const inFlightHashesRef = useRef<Set<string>>(new Set());
 
   const [filterRes, setFilterRes] = useState<string>("all");
@@ -103,7 +102,12 @@ export default function MediaDetailPage() {
   };
 
   const handleDownload = async (infoHash: string, streamIndex: number = 0) => {
-    // Guard: if this hash is already in-flight, ignore
+    // Global guard: only one download at a time
+    if (downloadingHash !== null) {
+      return;
+    }
+
+    // Per-hash guard: don't retry same hash in this modal session
     if (inFlightHashesRef.current.has(infoHash)) {
       return;
     }
@@ -128,12 +132,13 @@ export default function MediaDetailPage() {
       });
 
       const resData = await res.json();
-      if (!resData.success) {
+
+      if (!res.ok || !resData.success) {
+        // For infringing_file, we can move to the next stream ONCE per hash
         if (resData.code === "infringing_file") {
           const nextStream = streams[streamIndex + 1];
           if (nextStream?.infoHash) {
-            // allow the next hash to be attempted
-            inFlightHashesRef.current.delete(infoHash);
+            // allow attempting the next hash
             setDownloadingHash(null);
             await new Promise((resolve) => setTimeout(resolve, 500));
             return handleDownload(nextStream.infoHash, streamIndex + 1);
@@ -142,8 +147,10 @@ export default function MediaDetailPage() {
               "All available streams are blocked by Real-Debrid for this title.",
             );
           }
+        } else if (resData.code === "too_many_requests") {
+          toast.error("Real-Debrid rate limit reached. Please try again later.");
         } else {
-          toast.error(`Failed: ${resData.error}`);
+          toast.error(`Failed: ${resData.error || "Unknown error"}`);
         }
       } else {
         setStreamModal(null);
@@ -157,7 +164,6 @@ export default function MediaDetailPage() {
       toast.error("Something went wrong. Check the console.");
       console.error(err);
     } finally {
-      inFlightHashesRef.current.delete(infoHash);
       setDownloadingHash(null);
     }
   };
