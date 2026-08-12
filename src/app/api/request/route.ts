@@ -13,7 +13,6 @@ export async function POST(req: Request) {
       await req.json();
     const requestedMediaType = mediaType === "tv" ? "tv" : "movie";
 
-    // Guard: make sure we actually have an infoHash
     if (!infoHash) {
       return NextResponse.json(
         { success: false, error: "No infoHash provided" },
@@ -53,7 +52,7 @@ export async function POST(req: Request) {
       : null;
     const isAdmin = (currentUser?.role || session.role) === "admin";
 
-    // Stop here for non-admins — save to DB and return pending
+    // Non-admin request handling
     if (!isAdmin) {
       await db.run(
         `
@@ -81,7 +80,7 @@ export async function POST(req: Request) {
       });
 
       try {
-        const admins = await db.all<{ username: string }[]>(
+        const admins = await db.all<{ username: string }>(
           "SELECT username FROM users WHERE role = 'admin' AND username IS NOT NULL AND TRIM(username) != ''",
         );
         const adminUsernames = admins
@@ -111,7 +110,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, pending: true });
     }
 
-    // 1. Add magnet to Debrid (TorBox / RD)
+    // 1. Add magnet to Debrid
     await addLog("info", `Starting process for ${title}`, {
       infoHash,
       requestedBy,
@@ -135,7 +134,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Wait for provider to process the magnet, then fetch torrent info
+    // 2. Wait for processing & fetch torrent info
     await addLog(
       "info",
       `Waiting for debrid provider to process magnet for ${title}...`,
@@ -173,13 +172,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Select all valid video files
+    // 3. Select video files
     const files = info.files as DebridFile[];
-
     const videoFiles = files.filter((f) => {
       const isVideo = f.path.match(/\.(mkv|mp4|avi)$/i);
       const isNotSample = !f.path.toLowerCase().includes("sample");
-      const isLargeEnough = f.bytes > 30 * 1024 * 1024; // > 30MB
+      const isLargeEnough = f.bytes > 30 * 1024 * 1024;
       return isVideo && isNotSample && isLargeEnough;
     });
 
@@ -199,14 +197,12 @@ export async function POST(req: Request) {
       await addLog("warn", `selectFiles failed for ${title}`, {
         error: e?.message,
       });
-      // continue anyway — some providers no-op this
     }
 
-    // 4. Re-fetch torrent info after file selection (mostly useful for RD)
+    // 4. Re-fetch torrent info after selection
     let selectedInfoData = info;
     for (let attempt = 0; attempt < 4; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 750));
-
       try {
         const latest = await client.getTorrentInfo(torrentId);
         if (latest?.files?.some((f) => f.selected === 1)) {
@@ -219,140 +215,137 @@ export async function POST(req: Request) {
       }
     }
 
-    // 5. Create symlinks for both Plex and Jellyfin
-    createSymlinks({
-      infoData: {
-        filename: selectedInfoData.filename || title || "Unknown",
-        files: selectedInfoData.files as DebridFile[],
-      },
-      title: title || "Unknown",
-      tmdbId: tmdbId || null,
-      mediaType: requestedMediaType,
-      season: season || null,
-      episode: episode || null,
-      tmdbKey: settings.tmdb_key || "",
-      provider: settings.debrid_provider || "realdebrid",
-    })
-      .then(async ({ plex: plexPaths, jellyfin: jellyfinPaths }) => {
-        await addLog(
-          "info",
-          `Created symlinks for ${title}. Plex: ${plexPaths.length}, Jellyfin: ${jellyfinPaths.length}. Waiting for disk...`,
-        );
-
-        // Polling loop to wait for Zurg to expose the files
-        const checkPath = plexPaths[0] || jellyfinPaths[0];
-        if (checkPath) {
-          let fileExists = false;
-          let attempts = 0;
-          const maxAttempts = 24; // 2 minutes max
-
-          while (!fileExists && attempts < maxAttempts) {
-            try {
-              await access(checkPath);
-              fileExists = true;
-            } catch (e) {
-              attempts++;
-              await new Promise((resolve) => setTimeout(resolve, 5000));
-            }
-          }
-
-          if (fileExists) {
-            await addLog("info", `File verified on disk for ${title}.`);
-          } else {
-            await addLog(
-              "warn",
-              `Timed out waiting for file locally: ${title}. Generating scan anyway.`,
-            );
-          }
-        }
-
-        // Trigger Plex library scan (if configured)
-        if (settings.plex_url && settings.plex_token) {
-          const sectionId =
-            requestedMediaType === "tv"
-              ? settings.plex_tv_lib_id
-              : settings.plex_lib_id;
-
-          if (sectionId && isAdmin) {
-            await addLog(
-              "info",
-              `Triggering Plex library scan for ${title} (${requestedMediaType})`,
-            );
-            const refreshRes = await fetch(
-              `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
-            ).catch((e) => {
-              console.error("Plex refresh failed:", e);
-              return null;
-            });
-
-            if (refreshRes?.ok) {
-              await addLog("info", `Plex scan triggered for ${title}`);
-            }
-          }
-        }
-
-        // Trigger Jellyfin library scan (if configured)
-        if (settings.jellyfin_url && settings.jellyfin_token && isAdmin) {
-          await addLog(
-            "info",
-            `Triggering Jellyfin library scan for ${title} (${requestedMediaType})`,
-          );
-
-          const libraryType = requestedMediaType === "tv" ? "series" : "movie";
-
-          try {
-            const librariesRes = await fetch(
-              `${settings.jellyfin_url}/Library/VirtualFolders?X-Emby-Token=${settings.jellyfin_token}`,
-            );
-            const libraries = await librariesRes.json();
-
-            const targetLibrary = libraries.find(
-              (lib: any) =>
-                lib.LibraryOptions?.ContentType === libraryType ||
-                lib.Name.toLowerCase().includes(libraryType),
-            );
-
-            if (targetLibrary?.Name) {
-              const scanRes = await fetch(
-                `${settings.jellyfin_url}/Library/Refresh?X-Emby-Token=${settings.jellyfin_token}`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    LibraryOptions: {
-                      Name: targetLibrary.Name,
-                    },
-                  }),
-                },
-              );
-
-              if (scanRes.ok) {
-                await addLog("info", `Jellyfin scan triggered for ${title}`);
-              }
-            }
-          } catch (e) {
-            console.error("Jellyfin refresh failed:", e);
-          }
-        }
-
-        // Notify users
-        await notifyUsers({
-          type: "request",
-          title: `${title} added to library`,
-          body: `${requestedMediaType === "tv" ? "Series" : "Movie"} request was added and library scans triggered.`,
-          targetPath: tmdbId
-            ? `/media/${requestedMediaType}/${tmdbId}`
-            : "/requests",
-        });
-      })
-      .catch((e) => {
-        console.error("[symlinks] Error:", e);
-        addLog("error", `Failed to create symlinks for ${title}`, {
-          error: e?.message,
-        });
+    // 5. Create Symlinks and execute downstream actions sequentially
+    try {
+      const { plex: plexPaths, jellyfin: jellyfinPaths } = await createSymlinks({
+        infoData: {
+          filename: selectedInfoData.filename || title || "Unknown",
+          files: selectedInfoData.files as DebridFile[],
+        },
+        title: title || "Unknown",
+        tmdbId: tmdbId || null,
+        mediaType: requestedMediaType,
+        season: season || null,
+        episode: episode || null,
+        tmdbKey: settings.tmdb_key || "",
+        provider: settings.debrid_provider || "realdebrid",
       });
 
-    // 6. Save request to SQLite
+      await addLog(
+        "info",
+        `Created symlinks for ${title}. Plex: ${plexPaths.length}, Jellyfin: ${jellyfinPaths.length}. Waiting for disk...`,
+      );
+
+      // Verify file presence on disk
+      const checkPath = plexPaths[0] || jellyfinPaths[0];
+      if (checkPath) {
+        let fileExists = false;
+        let attempts = 0;
+        const maxAttempts = 24;
+
+        while (!fileExists && attempts < maxAttempts) {
+          try {
+            await access(checkPath);
+            fileExists = true;
+          } catch {
+            attempts++;
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+          }
+        }
+
+        if (fileExists) {
+          await addLog("info", `File verified on disk for ${title}.`);
+        } else {
+          await addLog(
+            "warn",
+            `Timed out waiting for file locally: ${title}. Generating scan anyway.`,
+          );
+        }
+      }
+
+      // Trigger Plex Scan
+      if (settings.plex_url && settings.plex_token) {
+        const sectionId =
+          requestedMediaType === "tv"
+            ? settings.plex_tv_lib_id
+            : settings.plex_lib_id;
+
+        if (sectionId && isAdmin) {
+          await addLog(
+            "info",
+            `Triggering Plex library scan for ${title} (${requestedMediaType})`,
+          );
+          const refreshRes = await fetch(
+            `${settings.plex_url}/library/sections/${sectionId}/refresh?X-Plex-Token=${settings.plex_token}`,
+          ).catch((e) => {
+            console.error("Plex refresh failed:", e);
+            return null;
+          });
+
+          if (refreshRes?.ok) {
+            await addLog("info", `Plex scan triggered for ${title}`);
+          }
+        }
+      }
+
+      // Trigger Jellyfin Scan
+      if (settings.jellyfin_url && settings.jellyfin_token && isAdmin) {
+        await addLog(
+          "info",
+          `Triggering Jellyfin library scan for ${title} (${requestedMediaType})`,
+        );
+
+        const targetCollectionType = requestedMediaType === "tv" ? "tvshows" : "movies";
+
+        try {
+          const librariesRes = await fetch(
+            `${settings.jellyfin_url}/Library/VirtualFolders?X-Emby-Token=${settings.jellyfin_token}`,
+          );
+          const libraries = await librariesRes.json();
+
+          const targetLibrary = libraries.find(
+            (lib: any) =>
+              lib.CollectionType === targetCollectionType ||
+              lib.Name.toLowerCase().includes(requestedMediaType),
+          );
+
+          if (targetLibrary?.ItemId) {
+            const scanRes = await fetch(
+              `${settings.jellyfin_url}/Items/${targetLibrary.ItemId}/Refresh?Recursive=true`,
+              {
+                method: "POST",
+                headers: {
+                  "X-Emby-Token": settings.jellyfin_token,
+                },
+              },
+            );
+
+            if (scanRes.ok) {
+              await addLog("info", `Jellyfin scan triggered for ${title}`);
+            }
+          }
+        } catch (e) {
+          console.error("Jellyfin refresh failed:", e);
+        }
+      }
+
+      // Send User Notifications
+      await notifyUsers({
+        type: "request",
+        title: `${title} added to library`,
+        body: `${requestedMediaType === "tv" ? "Series" : "Movie"} request was added and library scans triggered.`,
+        targetPath: tmdbId
+          ? `/media/${requestedMediaType}/${tmdbId}`
+          : "/requests",
+      });
+    } catch (e: any) {
+      console.error("[symlinks] Error:", e);
+      await addLog("error", `Failed to create symlinks for ${title}`, {
+        error: e?.message,
+      });
+    }
+
+    // 6. Save request record to SQLite
     await db.run(
       `
       INSERT INTO requests (tmdb_id, title, poster_path, status, requested_by, media_type, season, episode, info_hash, approved)
