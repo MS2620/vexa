@@ -106,9 +106,9 @@ export async function POST(
     }
 
     // Map DebridTorrentInfo into the shape createSymlinks expects
-    const infoData = {
+    const infoData: { filename: string; files: DebridFile[] } = {
       filename: req.title || "Unknown",
-      files: info.files,
+      files: info.files as DebridFile[],
     };
 
     const { plex: plexPaths, jellyfin: jellyfinPaths } = await createSymlinks({

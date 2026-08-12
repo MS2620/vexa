@@ -1,19 +1,13 @@
 import path from "path";
 import fs from "fs/promises";
+import type { DebridFile } from "./debrid/client";
 
 const DEBRID_MOUNT = process.env.DEBRID_MOUNT || "/mnt/zurg/__all__";
 const PLEX_SYMLINK_ROOT = process.env.PLEX_SYMLINK_ROOT || "/mnt/plex_symlinks";
 const JELLYFIN_LINK_ROOT = process.env.JELLYFIN_LINK_ROOT || "/mnt/jellyfin_links";
 
-type RDFile = {
-  id: number;
-  path: string;
-  bytes: number;
-  selected: number;
-};
-
 interface SymlinkParams {
-  infoData: { filename: string; files: RDFile[] };
+  infoData: { filename: string; files: DebridFile[] };
   title: string;
   tmdbId: string | null;
   mediaType: "movie" | "tv";
@@ -78,13 +72,13 @@ export async function createSymlinks({
 
   const baseName = year ? `${title} (${year})` : title;
 
-  // Only selected video files
-  const videoFiles = infoData.files.filter(
-    (f) => f.selected === 1 && /\.(mkv|mp4|avi)$/i.test(f.path),
+  // Video files only (selection already handled upstream via client.selectFiles)
+  const videoFiles = infoData.files.filter((f) =>
+    /\.(mkv|mp4|avi)$/i.test(f.path),
   );
 
   if (videoFiles.length === 0) {
-    console.warn(`[symlinks] No selected video files found for "${title}"`);
+    console.warn(`[symlinks] No video files found for "${title}"`);
     return { plex: plexPaths, jellyfin: jellyfinPaths };
   }
 
@@ -130,7 +124,6 @@ export async function createSymlinks({
     }
 
     // ---------- Jellyfin: TMDB-based names + version suffix ----------
-    // Only do this if you're actually using a Jellyfin link tree.
     if (JELLYFIN_LINK_ROOT) {
       const jfTargetDir = path.join(
         JELLYFIN_LINK_ROOT,
@@ -143,7 +136,6 @@ export async function createSymlinks({
       await fs.mkdir(jfTargetDir, { recursive: true });
 
       // Jellyfin grouping rule: file base name must exactly match folder, suffix after " - "
-      // e.g. "Up (2009) - 4K.mkv"
       const jfFileName =
         versionLabel && versionLabel !== "SD"
           ? `${baseName} - ${versionLabel}${ext}`
@@ -152,7 +144,6 @@ export async function createSymlinks({
       const jfTargetPath = path.join(jfTargetDir, jfFileName);
 
       try {
-        // If you ever move to a local cache on same FS, switch this to hard link.
         await fs.symlink(sourcePath, jfTargetPath);
         console.log(`[jellyfin] ${jfTargetPath} → ${sourcePath}`);
         jellyfinPaths.push(jfTargetPath);
