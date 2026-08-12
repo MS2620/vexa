@@ -20,6 +20,11 @@ interface SymlinkParams {
   provider?: "realdebrid" | "torbox";
 }
 
+// Strip invalid OS path characters (e.g. "Special Ops: Lioness" -> "Special Ops Lioness")
+function sanitizeFilename(name: string): string {
+  return name.replace(/[/\\?%*:|"<>]/g, "").replace(/\s+/g, " ").trim();
+}
+
 function classifyResolution(p: string): string {
   const s = p.toLowerCase();
   if (s.includes("2160p") || s.includes("4k") || s.includes("uhd")) return "4K";
@@ -32,8 +37,6 @@ function buildVersionLabel(filePath: string): string {
   return classifyResolution(filePath);
 }
 
-// Try to pull SxxExx (or just Exx) out of the actual filename first.
-// Falls back to the request-level season/episode if parsing fails.
 function resolveEpisodeTag(
   filePath: string,
   fallbackSeason: number | null,
@@ -41,7 +44,7 @@ function resolveEpisodeTag(
 ): { season: number; episode: number } {
   const name = path.basename(filePath);
 
-  // Match S01E06, s1e6, 1x06, etc.
+  // Match S01E06, s1e6, 1x06
   const seMatch = name.match(/[Ss](\d{1,2})[Ee](\d{1,3})/);
   if (seMatch) {
     return {
@@ -58,12 +61,21 @@ function resolveEpisodeTag(
     };
   }
 
-  // Match standalone Exx when season is already known from context
+  // Match standalone Exx when season is known
   const eOnlyMatch = name.match(/[Ee](\d{2,3})(?!\d)/);
   if (eOnlyMatch && fallbackSeason) {
     return {
       season: fallbackSeason,
       episode: parseInt(eOnlyMatch[1], 10),
+    };
+  }
+
+  // Match leading number in TV pack episode files (e.g. "01 - Episode Title.mkv")
+  const leadingNumMatch = name.match(/^(\d{1,2})\s*[-_.]/);
+  if (leadingNumMatch && fallbackSeason) {
+    return {
+      season: fallbackSeason,
+      episode: parseInt(leadingNumMatch[1], 10),
     };
   }
 
@@ -121,7 +133,12 @@ export async function createSymlinks({
     }
   }
 
-  const baseName = year ? `${title} (${year})` : title;
+  const cleanTitle = sanitizeFilename(title);
+  const titleWithYear = year ? `${cleanTitle} (${year})` : cleanTitle;
+
+  // Folder names formatted explicitly for metadata matchers
+  const jfBaseFolder = tmdbId ? `${titleWithYear} [tmdbid-${tmdbId}]` : titleWithYear;
+  const plexBaseFolder = tmdbId ? `${titleWithYear} {tmdb-${tmdbId}}` : titleWithYear;
 
   const videoFiles = infoData.files.filter((f) =>
     /\.(mkv|mp4|avi)$/i.test(f.path),
@@ -133,16 +150,21 @@ export async function createSymlinks({
   }
 
   for (const file of videoFiles) {
-    const parts = file.path.replace(/^\//, "").split("/");
-    const sourcePath =
-      parts.length === 1
-        ? path.join(DEBRID_MOUNT, infoData.filename, parts[0])
-        : path.join(DEBRID_MOUNT, file.path);
+    const cleanFilePath = file.path.replace(/^\//, "");
+    
+    // Resolve single-file torrent paths vs directory torrent paths
+    let sourcePath: string;
+    if (cleanFilePath === infoData.filename) {
+      sourcePath = path.join(DEBRID_MOUNT, cleanFilePath);
+    } else if (!cleanFilePath.startsWith(infoData.filename)) {
+      sourcePath = path.join(DEBRID_MOUNT, infoData.filename, cleanFilePath);
+    } else {
+      sourcePath = path.join(DEBRID_MOUNT, cleanFilePath);
+    }
 
     const ext = path.extname(file.path) || ".mkv";
     const versionLabel = buildVersionLabel(file.path);
 
-    // Resolve per-file episode info (handles season packs correctly)
     const resolved =
       mediaType === "tv"
         ? resolveEpisodeTag(file.path, season, episode)
@@ -155,7 +177,7 @@ export async function createSymlinks({
       const plexTargetDir = path.join(
         PLEX_SYMLINK_ROOT,
         mediaType === "movie" ? "Movies" : "TV_Shows",
-        baseName,
+        plexBaseFolder,
         ...(mediaType === "tv"
           ? [`Season ${String(resolved.season).padStart(2, "0")}`]
           : []),
@@ -164,8 +186,8 @@ export async function createSymlinks({
 
       const plexFileName =
         mediaType === "tv"
-          ? `${baseName} - ${epTag}${ext}`
-          : path.basename(file.path);
+          ? `${cleanTitle} - ${epTag}${ext}`
+          : `${cleanTitle}${ext}`;
 
       const plexTargetPath = path.join(plexTargetDir, plexFileName);
 
@@ -187,7 +209,7 @@ export async function createSymlinks({
       const jfTargetDir = path.join(
         JELLYFIN_LINK_ROOT,
         mediaType === "movie" ? "Movies" : "TV_Shows",
-        baseName,
+        jfBaseFolder,
         ...(mediaType === "tv"
           ? [`Season ${String(resolved.season).padStart(2, "0")}`]
           : []),
@@ -195,16 +217,12 @@ export async function createSymlinks({
       await fs.mkdir(jfTargetDir, { recursive: true });
 
       let jfFileName: string;
+      const tagSuffix = versionLabel && versionLabel !== "SD" ? ` - [${versionLabel}]` : "";
+
       if (mediaType === "tv") {
-        jfFileName =
-          versionLabel && versionLabel !== "SD"
-            ? `${baseName} - ${epTag} - ${versionLabel}${ext}`
-            : `${baseName} - ${epTag}${ext}`;
+        jfFileName = `${cleanTitle} - ${epTag}${tagSuffix}${ext}`;
       } else {
-        jfFileName =
-          versionLabel && versionLabel !== "SD"
-            ? `${baseName} - ${versionLabel}${ext}`
-            : `${baseName}${ext}`;
+        jfFileName = `${cleanTitle}${tagSuffix}${ext}`;
       }
 
       const jfTargetPath = path.join(jfTargetDir, jfFileName);

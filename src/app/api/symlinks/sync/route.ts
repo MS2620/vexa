@@ -12,7 +12,6 @@ type ParsedName = {
 
 type TmdbMatch = { id: number; title: string; mediaType: "movie" | "tv" };
 
-// Extract title, year, type, and season from a raw torrent filename.
 function parseTorrentName(filename: string): ParsedName {
   let s = filename.replace(/\.(mkv|mp4|avi|mov|wmv|m4v|ts|iso)$/i, "");
   s = s.replace(/^\[[\w\s.:-]+\]\s*/, "");
@@ -24,16 +23,17 @@ function parseTorrentName(filename: string): ParsedName {
 
   const multiSeason = s.match(/^(.+?)\s+[Ss](\d{1,2})-[Ss]\d{1,2}/i);
   if (multiSeason)
-    return buildTvParsedName(multiSeason[1], parseInt(multiSeason[2]));
+    return buildTvParsedName(multiSeason[1], parseInt(multiSeason[2], 10));
 
   const sxex = s.match(/^(.+?)\s+[Ss](\d{1,2})[Ee]\d{1,2}/i);
-  if (sxex) return buildTvParsedName(sxex[1], parseInt(sxex[2]));
+  if (sxex)
+    return buildTvParsedName(sxex[1], parseInt(sxex[2], 10));
 
   const parenSeason = s.match(
     /^(.+?)\s+\((?:[Ss]eason\s+(\d{1,2})|[Ss](\d{2}))\)/i,
   );
   if (parenSeason) {
-    const season = parseInt(parenSeason[2] ?? parenSeason[3]);
+    const season = parseInt(parenSeason[2] ?? parenSeason[3], 10);
     if (!isNaN(season)) return buildTvParsedName(parenSeason[1], season);
   }
 
@@ -41,7 +41,7 @@ function parseTorrentName(filename: string): ParsedName {
     /^(.+?)\s+(?:[Ss]eason\s+(\d{1,2})|[Ss](\d{2})(?:\s|$))/i,
   );
   if (pack) {
-    const season = parseInt(pack[2] ?? pack[3]);
+    const season = parseInt(pack[2] ?? pack[3], 10);
     if (!isNaN(season)) return buildTvParsedName(pack[1], season);
   }
 
@@ -49,7 +49,7 @@ function parseTorrentName(filename: string): ParsedName {
     /^(.+?)\s+[Ss]eason\s+[Ss](\d{1,2})(?:\s|$)/i,
   );
   if (seasonWithSPrefix) {
-    const season = parseInt(seasonWithSPrefix[2]);
+    const season = parseInt(seasonWithSPrefix[2], 10);
     if (!isNaN(season)) return buildTvParsedName(seasonWithSPrefix[1], season);
   }
 
@@ -138,9 +138,7 @@ async function searchTMDB(
     queries.add(
       base.replace(
         /\b([A-Za-z])\s+([A-Za-z])(\s+([A-Za-z]))?\b/g,
-        (_, a, b, _grp, c) => {
-          return c ? `${a}.${b}.${c}.` : `${a}.${b}.`;
-        },
+        (_, a, b, _grp, c) => (c ? `${a}.${b}.${c}.` : `${a}.${b}.`),
       ),
     );
 
@@ -169,7 +167,7 @@ async function searchTMDB(
 
   const tryType = async (type: "movie" | "tv"): Promise<TmdbMatch | null> => {
     const queries = buildQueryVariants(title);
-    
+
     for (const query of queries) {
       const result = await doSearch(query, true, type);
       if (result)
@@ -208,12 +206,24 @@ export async function POST() {
     });
 
   const db = await openDb();
+  
+  // Ensure sync tracking table exists
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS synced_torrents (
+      torrent_id TEXT PRIMARY KEY,
+      synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   const settings = await db.get(
-    "SELECT rd_token, tmdb_key, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, jellyfin_url, jellyfin_token, jellyfin_lib_id, jellyfin_tv_lib_id FROM settings WHERE id = 1",
+    "SELECT rd_token, torbox_token, debrid_provider, tmdb_key, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, jellyfin_url, jellyfin_token, jellyfin_lib_id, jellyfin_tv_lib_id FROM settings WHERE id = 1",
   );
 
-  if (!settings?.rd_token)
-    return new Response(JSON.stringify({ error: "RD token not configured" }), {
+  const provider: "realdebrid" | "torbox" = settings?.debrid_provider || "realdebrid";
+  const token = provider === "torbox" ? settings?.torbox_token : settings?.rd_token;
+
+  if (!token)
+    return new Response(JSON.stringify({ error: `${provider.toUpperCase()} token not configured` }), {
       status: 400,
     });
 
@@ -229,12 +239,26 @@ export async function POST() {
   const stream = new ReadableStream({
     async start(ctrl) {
       try {
-        const torrentsRes = await fetch(
-          "https://api.real-debrid.com/rest/1.0/torrents?limit=2500",
-          { headers: { Authorization: `Bearer ${settings.rd_token}` } },
+        let allTorrents: any[] = [];
+
+        if (provider === "realdebrid") {
+          const torrentsRes = await fetch(
+            "https://api.real-debrid.com/rest/1.0/torrents?limit=2500",
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+          allTorrents = await torrentsRes.json();
+        } else {
+          // TorBox API integration
+          const torrentsRes = await fetch("https://api.torbox.app/v1/api/torrents/mylist", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const torboxData = await torrentsRes.json();
+          allTorrents = torboxData?.data ?? [];
+        }
+
+        const downloaded = allTorrents.filter(
+          (t) => t.status === "downloaded" || t.download_state === "completed" || t.progress === 100
         );
-        const allTorrents: any[] = await torrentsRes.json();
-        const downloaded = allTorrents.filter((t) => t.status === "downloaded");
 
         send(ctrl, { type: "total", count: downloaded.length });
 
@@ -245,13 +269,45 @@ export async function POST() {
 
         for (let i = 0; i < downloaded.length; i++) {
           const torrent = downloaded[i];
+          const torrentId = String(torrent.id);
+
+          // Fast DB cache check: Skip already synced items
+          const existing = await db.get(
+            "SELECT torrent_id FROM synced_torrents WHERE torrent_id = ?",
+            [torrentId],
+          );
+
+          if (existing) {
+            skipped++;
+            send(ctrl, {
+              type: "progress",
+              current: i + 1,
+              total: downloaded.length,
+            });
+            continue;
+          }
+
           try {
-            const infoRes = await fetch(
-              `https://api.real-debrid.com/rest/1.0/torrents/info/${torrent.id}`,
-              { headers: { Authorization: `Bearer ${settings.rd_token}` } },
-            );
-            const infoData: { filename: string; files: RDFile[] } =
-              await infoRes.json();
+            let infoData: { filename: string; files: RDFile[] };
+
+            if (provider === "realdebrid") {
+              const infoRes = await fetch(
+                `https://api.real-debrid.com/rest/1.0/torrents/info/${torrentId}`,
+                { headers: { Authorization: `Bearer ${token}` } },
+              );
+              infoData = await infoRes.json();
+            } else {
+              // Standardize TorBox payload structure to match RDFile
+              infoData = {
+                filename: torrent.name,
+                files: (torrent.files ?? []).map((f: any, idx: number) => ({
+                  id: idx,
+                  path: f.name || f.path,
+                  bytes: f.size ?? 0,
+                  selected: 1,
+                })),
+              };
+            }
 
             if (
               /\b(collection|saga|pack|anthology|trilogy|quadrilogy|franchise|universe)\b/i.test(
@@ -291,7 +347,6 @@ export async function POST() {
                 reason: "No TMDB match",
               });
             } else {
-              // Create symlinks for both Plex and Jellyfin
               const { plex: plexPaths, jellyfin: jellyfinPaths } = await createSymlinks({
                 infoData,
                 title: match.title,
@@ -299,7 +354,14 @@ export async function POST() {
                 mediaType: match.mediaType,
                 season: parsed.season,
                 tmdbKey: settings.tmdb_key,
+                provider,
               });
+
+              // Mark in DB as successfully processed
+              await db.run(
+                "INSERT OR REPLACE INTO synced_torrents (torrent_id) VALUES (?)",
+                [torrentId],
+              );
 
               synced++;
               syncedMediaTypes.add(match.mediaType);
@@ -318,7 +380,7 @@ export async function POST() {
             send(ctrl, {
               type: "item",
               status: "failed",
-              filename: torrent.filename,
+              filename: torrent.name || torrent.filename,
               reason: msg,
             });
           }
@@ -328,7 +390,7 @@ export async function POST() {
             current: i + 1,
             total: downloaded.length,
           });
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, 100));
         }
 
         // Trigger library scans for both services
@@ -346,7 +408,7 @@ export async function POST() {
 
         const scansTriggered: string[] = [];
 
-        // Plex refresh
+        // Plex Library Refresh
         if (settings.plex_url && settings.plex_token && plexSectionIds.length > 0) {
           try {
             await Promise.all(
@@ -363,31 +425,21 @@ export async function POST() {
           }
         }
 
-        // Jellyfin refresh
+        // Jellyfin Library Refresh
         if (settings.jellyfin_url && settings.jellyfin_token && jellyfinLibraries.length > 0) {
           try {
-            // Refresh all targeted libraries
             for (const libId of jellyfinLibraries) {
-              const scanRes = await fetch(
-                `${settings.jellyfin_url}/Library/Refresh?X-Emby-Token=${settings.jellyfin_token}`,
+              await fetch(
+                `${settings.jellyfin_url}/Items/${libId}/Refresh?Recursive=true`,
                 {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    LibraryOptions: {
-                      Name: libId,
-                    },
-                  }),
+                  headers: {
+                    "X-Emby-Token": settings.jellyfin_token,
+                  },
                 },
               );
-
-              if (scanRes.ok) {
-                if (!scansTriggered.includes("Jellyfin")) {
-                  scansTriggered.push("Jellyfin");
-                }
-              }
             }
-
+            scansTriggered.push("Jellyfin");
             send(ctrl, { type: "scan", service: "Jellyfin", libraries: jellyfinLibraries });
           } catch (e) {
             console.error("Jellyfin refresh failed:", e);
