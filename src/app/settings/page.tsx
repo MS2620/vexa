@@ -1,4 +1,5 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import {
@@ -22,6 +23,7 @@ type SyncItem = {
   plexCount?: number;
   jellyfinCount?: number;
 };
+
 type SyncSummary = {
   synced: number;
   skipped: number;
@@ -54,20 +56,18 @@ export default function Settings() {
   const [formData, setFormData] = useState({
     tmdb_key: "",
     rd_token: "",
-    // Plex
+    torbox_api_key: "",
+    debrid_provider: "realdebrid",
     plex_url: "",
     plex_token: "",
     plex_lib_id: "",
     plex_tv_lib_id: "",
-    // Jellyfin
     jellyfin_url: "",
     jellyfin_token: "",
     jellyfin_lib_id: "",
     jellyfin_tv_lib_id: "",
-    // Preferences
     preferred_resolution: "1080p",
     preferred_language: "en",
-    // Notifications
     vapid_subject: DEFAULT_VAPID_SUBJECT,
     smtp_host: "",
     smtp_port: "587",
@@ -79,20 +79,36 @@ export default function Settings() {
   const [serviceStatus, setServiceStatus] = useState<any>(null);
   const [statusLoading, setStatusLoading] = useState(true);
 
-  const [syncState, setSyncState] = useState<"idle" | "running" | "done">("idle");
+  const [syncState, setSyncState] = useState<"idle" | "running" | "done">(
+    "idle",
+  );
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
   const [syncItems, setSyncItems] = useState<SyncItem[]>([]);
   const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [syncTab, setSyncTab] = useState<"synced" | "skipped" | "failed">("synced");
+  const [syncTab, setSyncTab] = useState<"synced" | "skipped" | "failed">(
+    "synced",
+  );
 
-  const [collectionSyncState, setCollectionSyncState] = useState<"idle" | "running" | "done">("idle");
-  const [collectionProgress, setCollectionProgress] = useState({ current: 0, total: 0 });
-  const [collectionItems, setCollectionItems] = useState<CollectionSyncItem[]>([]);
-  const [collectionSummary, setCollectionSummary] = useState<CollectionSyncSummary | null>(null);
+  const [collectionSyncState, setCollectionSyncState] = useState<
+    "idle" | "running" | "done"
+  >("idle");
+  const [collectionProgress, setCollectionProgress] = useState({
+    current: 0,
+    total: 0,
+  });
+  const [collectionItems, setCollectionItems] = useState<CollectionSyncItem[]>(
+    [],
+  );
+  const [collectionSummary, setCollectionSummary] =
+    useState<CollectionSyncSummary | null>(null);
   const [collectionError, setCollectionError] = useState<string | null>(null);
-  const [collectionTab, setCollectionTab] = useState<"created" | "updated" | "skipped" | "failed">("created");
-  const [collectionPhaseLabel, setCollectionPhaseLabel] = useState("Preparing collection sync…");
+  const [collectionTab, setCollectionTab] = useState<
+    "created" | "updated" | "skipped" | "failed"
+  >("created");
+  const [collectionPhaseLabel, setCollectionPhaseLabel] = useState(
+    "Preparing collection sync…",
+  );
 
   const handleSync = async () => {
     setSyncState("running");
@@ -131,13 +147,12 @@ export default function Settings() {
             setSyncState("done");
           } else if (event.type === "error") setSyncState("done");
         } catch {
-          /* malformed line */
+          // malformed line
         }
       }
     }
   };
 
-  // Load saved settings
   useEffect(() => {
     fetch("/api/settings")
       .then((res) => res.json())
@@ -145,6 +160,8 @@ export default function Settings() {
         setFormData((prev) => ({
           ...prev,
           ...data,
+          debrid_provider: data?.debrid_provider || "realdebrid",
+          torbox_api_key: data?.torbox_api_key || "",
           vapid_subject:
             typeof data?.vapid_subject === "string" && data.vapid_subject.trim()
               ? data.vapid_subject.trim()
@@ -153,7 +170,6 @@ export default function Settings() {
       );
   }, []);
 
-  // Load live service status
   useEffect(() => {
     fetch("/api/status")
       .then((r) => r.json())
@@ -260,9 +276,8 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ── LIVE STATUS PANEL ── */}
+      {/* LIVE STATUS PANEL */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Real-Debrid Card */}
         <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Real-Debrid</h3>
@@ -312,7 +327,6 @@ export default function Settings() {
           )}
         </div>
 
-        {/* Plex Card */}
         <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Plex</h3>
@@ -343,7 +357,6 @@ export default function Settings() {
           </p>
         </div>
 
-        {/* Jellyfin Card */}
         <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Jellyfin</h3>
@@ -374,15 +387,13 @@ export default function Settings() {
           </p>
         </div>
 
-        {/* Mount Health Card */}
         <div className="bg-[#161824] border border-white/5 rounded-xl p-6 shadow-lg shadow-black/20 md:col-span-3">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Mount Health</h3>
             {statusLoading ? (
               <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
             ) : serviceStatus?.mounts?.debrid_mount?.readable &&
-              (serviceStatus?.mounts?.plex_symlink_root?.writable ||
-                serviceStatus?.mounts?.jellyfin_link_root?.writable) ? (
+              serviceStatus?.mounts?.plex_symlink_root?.writable ? (
               <span className="text-xs px-2 py-1 rounded-full font-bold border bg-green-600/20 text-green-400 border-green-600/30">
                 ● Healthy
               </span>
@@ -394,7 +405,6 @@ export default function Settings() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Debrid Mount */}
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -426,7 +436,6 @@ export default function Settings() {
                 )}
             </div>
 
-            {/* Hard Link Capability */}
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -452,11 +461,11 @@ export default function Settings() {
                 </span>
               </div>
               <p className="text-xs text-gray-500">
-                Hard links work best for Jellyfin. If cross-filesystem, symlinks will be used as fallback.
+                Hard links work best for Jellyfin. If cross-filesystem,
+                symlinks will be used as fallback.
               </p>
             </div>
 
-            {/* Plex Symlink Root */}
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -488,11 +497,12 @@ export default function Settings() {
                 )}
             </div>
 
-            {/* Jellyfin Link Root */}
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-gray-300 font-medium">Jellyfin Link Root</p>
+                  <p className="text-gray-300 font-medium">
+                    Jellyfin Link Root
+                  </p>
                   <p className="text-xs text-gray-500 break-all">
                     {serviceStatus?.mounts?.jellyfin_link_root?.path ||
                       "/mnt/jellyfin_links"}
@@ -523,9 +533,8 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ── CONFIGURATION FORM ── */}
+      {/* CONFIGURATION FORM */}
       <div className="bg-[#161824] border border-white/5 rounded-xl p-6 md:p-8 space-y-8 shadow-lg shadow-black/20">
-        {/* Core API Keys */}
         <div>
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
             API Keys
@@ -562,7 +571,54 @@ export default function Settings() {
 
         <div className="border-t border-white/5" />
 
-        {/* Plex */}
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Film className="w-4 h-4 text-gray-400" />
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
+              Debrid Provider
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">
+                Provider
+              </label>
+              <select
+                value={formData.debrid_provider || "realdebrid"}
+                onChange={(e) =>
+                  setFormData({ ...formData, debrid_provider: e.target.value })
+                }
+                className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
+              >
+                <option value="realdebrid">Real-Debrid</option>
+                <option value="torbox">TorBox</option>
+              </select>
+            </div>
+
+            {formData.debrid_provider === "torbox" && (
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">
+                  TorBox API Key
+                </label>
+                <input
+                  type="password"
+                  value={formData.torbox_api_key || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      torbox_api_key: e.target.value,
+                    })
+                  }
+                  className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="border-t border-white/5" />
+
         <div>
           <div className="flex items-center gap-2 mb-4">
             <Film className="w-4 h-4 text-gray-400" />
@@ -631,7 +687,6 @@ export default function Settings() {
 
         <div className="border-t border-white/5" />
 
-        {/* Jellyfin */}
         <div>
           <div className="flex items-center gap-2 mb-4">
             <Tv className="w-4 h-4 text-gray-400" />
@@ -690,7 +745,10 @@ export default function Settings() {
                 placeholder="e.g. TV Shows"
                 value={formData.jellyfin_tv_lib_id || ""}
                 onChange={(e) =>
-                  setFormData({ ...formData, jellyfin_tv_lib_id: e.target.value })
+                  setFormData({
+                    ...formData,
+                    jellyfin_tv_lib_id: e.target.value,
+                  })
                 }
                 className="w-full bg-[#0B0f19]/50 border border-white/10 rounded-lg p-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 focus:bg-[#0B0f19] transition-colors"
               />
@@ -700,7 +758,6 @@ export default function Settings() {
 
         <div className="border-t border-white/5" />
 
-        {/* Stream Preferences */}
         <div>
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
             Stream Preferences
@@ -757,7 +814,6 @@ export default function Settings() {
 
         <div className="border-t border-white/5" />
 
-        {/* Push Notifications */}
         <div>
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
             Push Notifications
@@ -786,7 +842,6 @@ export default function Settings() {
 
         <div className="border-t border-white/5" />
 
-        {/* SMTP Notifications */}
         <div>
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
             Email Notifications (SMTP)
@@ -863,7 +918,6 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Save Button */}
         <div className="pt-2 flex items-center justify-between border-t border-white/5">
           <span className="text-green-400 text-sm"></span>
           <button
@@ -875,7 +929,7 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ── PLEX COLLECTION SYNC ── */}
+      {/* PLEX COLLECTION SYNC */}
       <div className="bg-[#161824] border border-white/5 rounded-xl p-6 md:p-8 space-y-6 shadow-lg shadow-black/20">
         <div>
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-1">
@@ -930,9 +984,7 @@ export default function Settings() {
             <span className="text-yellow-400">
               ⊘ {collectionSummary.skipped} skipped
             </span>
-            <span className="text-red-400">
-              ✗ {collectionSummary.failed} failed
-            </span>
+            <span className="text-red-400">✗ {collectionSummary.failed} failed</span>
             <span className="text-gray-400">
               ({collectionSummary.scannedMovies} scanned,{" "}
               {collectionSummary.matchedCollections} matched)
@@ -1050,20 +1102,19 @@ export default function Settings() {
         </button>
       </div>
 
-      {/* ── LIBRARY SYNC ── */}
+      {/* LIBRARY SYNC */}
       <div className="bg-[#161824] border border-white/5 rounded-xl p-6 md:p-8 space-y-6 shadow-lg shadow-black/20">
         <div>
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-1">
             Library Sync
           </h2>
           <p className="text-sm text-gray-500">
-            Scan your existing Real-Debrid library and create symlinks for both
-            Plex (soft links) and Jellyfin (hard links). Safe to re-run —
-            existing links are skipped.
+            Scan your existing Real-Debrid library and create Plex symlinks for
+            all downloaded torrents. Safe to re-run — existing symlinks are
+            skipped.
           </p>
         </div>
 
-        {/* Error banner */}
         {syncError && (
           <div className="flex items-center gap-2 text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-4 py-2.5">
             <XCircle className="w-4 h-4 shrink-0" />
@@ -1071,7 +1122,6 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Progress bar */}
         {syncState === "running" && syncProgress.total > 0 && (
           <div className="space-y-2">
             <div className="flex justify-between text-xs text-gray-400">
@@ -1091,7 +1141,6 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Summary */}
         {syncSummary && (
           <div className="space-y-3">
             <div className="flex gap-4 text-sm">
@@ -1112,10 +1161,8 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Tabbed results */}
         {syncItems.length > 0 && (
           <div className="rounded-lg bg-[#0f111a] border border-white/5 overflow-hidden">
-            {/* Tab bar */}
             <div className="flex border-b border-white/5">
               {(
                 [
@@ -1158,7 +1205,6 @@ export default function Settings() {
               })}
             </div>
 
-            {/* Tab content */}
             <div className="max-h-64 overflow-y-auto p-3 space-y-1">
               {syncItems.filter((i) => i.status === syncTab).length === 0 ? (
                 <p className="text-xs text-gray-600 text-center py-4">
@@ -1180,9 +1226,7 @@ export default function Settings() {
                       )}
                       <div className="min-w-0 flex-1">
                         <span className="text-gray-300 block truncate">
-                          {item.status === "synced"
-                            ? item.title
-                            : item.filename}
+                          {item.status === "synced" ? item.title : item.filename}
                         </span>
                         {item.status === "synced" && item.filename && (
                           <span className="text-gray-600 block truncate">

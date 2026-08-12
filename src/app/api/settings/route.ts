@@ -6,11 +6,52 @@ export async function GET() {
   await initDb();
   const db = await openDb();
   const settings = await db.get<any>(
-    "SELECT tmdb_key, rd_token, plex_url, plex_token, plex_lib_id, plex_tv_lib_id, jellyfin_url, jellyfin_token, jellyfin_lib_id, jellyfin_tv_lib_id, preferred_resolution, preferred_language, vapid_subject FROM settings WHERE id = 1",
+    `SELECT
+       tmdb_key,
+       rd_token,
+       plex_url,
+       plex_token,
+       plex_lib_id,
+       plex_tv_lib_id,
+       jellyfin_url,
+       jellyfin_token,
+       jellyfin_lib_id,
+       jellyfin_tv_lib_id,
+       preferred_resolution,
+       preferred_language,
+       vapid_subject,
+       debrid_provider,
+       torbox_api_key
+     FROM settings WHERE id = 1`,
   );
 
-  if (!settings?.vapid_subject?.trim()) {
+  if (!settings) {
+    return NextResponse.json({
+      tmdb_key: "",
+      rd_token: "",
+      plex_url: "",
+      plex_token: "",
+      plex_lib_id: "",
+      plex_tv_lib_id: "",
+      jellyfin_url: "",
+      jellyfin_token: "",
+      jellyfin_lib_id: "",
+      jellyfin_tv_lib_id: "",
+      preferred_resolution: "1080p",
+      preferred_language: "en",
+      vapid_subject: DEFAULT_VAPID_SUBJECT,
+      debrid_provider: "realdebrid",
+      torbox_api_key: "",
+    });
+  }
+
+  if (!settings.vapid_subject?.trim()) {
     settings.vapid_subject = DEFAULT_VAPID_SUBJECT;
+  }
+
+  // Default provider if null
+  if (!settings.debrid_provider) {
+    settings.debrid_provider = "realdebrid";
   }
 
   return NextResponse.json(settings);
@@ -19,15 +60,33 @@ export async function GET() {
 export async function POST(req: Request) {
   const body = await req.json();
   const db = await openDb();
+
   const vapidSubject =
     typeof body.vapid_subject === "string" && body.vapid_subject.trim()
       ? body.vapid_subject.trim()
       : DEFAULT_VAPID_SUBJECT;
 
+  const debridProvider =
+    body.debrid_provider === "torbox" ? "torbox" : "realdebrid";
+
   await db.run(
     `
     UPDATE settings SET 
-      tmdb_key = ?, rd_token = ?, plex_url = ?, plex_token = ?, plex_lib_id = ?, plex_tv_lib_id = ?, jellyfin_url = ?, jellyfin_token = ?, jellyfin_lib_id = ?, jellyfin_tv_lib_id = ?, preferred_resolution = ?, preferred_language = ?, vapid_subject = ?
+      tmdb_key = ?,
+      rd_token = ?,
+      plex_url = ?,
+      plex_token = ?,
+      plex_lib_id = ?,
+      plex_tv_lib_id = ?,
+      jellyfin_url = ?,
+      jellyfin_token = ?,
+      jellyfin_lib_id = ?,
+      jellyfin_tv_lib_id = ?,
+      preferred_resolution = ?,
+      preferred_language = ?,
+      vapid_subject = ?,
+      debrid_provider = ?,
+      torbox_api_key = ?
     WHERE id = 1
   `,
     [
@@ -44,6 +103,8 @@ export async function POST(req: Request) {
       body.preferred_resolution,
       body.preferred_language,
       vapidSubject,
+      debridProvider,
+      body.torbox_api_key || "",
     ],
   );
 

@@ -6,7 +6,8 @@ import { constants as fsConstants } from "fs";
 async function getMountHealth() {
   const debridMount = process.env.DEBRID_MOUNT || "/mnt/zurg/__all__";
   const plexSymlinkRoot = process.env.PLEX_SYMLINK_ROOT || "/mnt/plex_symlinks";
-  const jellyfinLinkRoot = process.env.JELLYFIN_LINK_ROOT || "/mnt/jellyfin_links";
+  const jellyfinLinkRoot =
+    process.env.JELLYFIN_LINK_ROOT || "/mnt/jellyfin_links";
 
   const [
     debridReadable,
@@ -69,46 +70,70 @@ export async function GET() {
     const db = await openDb();
     const mounts = await getMountHealth();
     const settings = await db.get(
-      "SELECT rd_token, plex_url, plex_token, jellyfin_url, jellyfin_token FROM settings WHERE id = 1",
+      `SELECT
+         debrid_provider,
+         rd_token,
+         plex_url,
+         plex_token,
+         jellyfin_url,
+         jellyfin_token
+       FROM settings WHERE id = 1`,
     );
 
-    const [rdUser, rdTorrents, plexCheck, jellyfinCheck] = await Promise.allSettled([
-      fetch("https://api.real-debrid.com/rest/1.0/user", {
-        headers: { Authorization: `Bearer ${settings?.rd_token}` },
-      }).then((r) => r.json()),
+    const provider = settings?.debrid_provider || "realdebrid";
 
-      fetch("https://api.real-debrid.com/rest/1.0/torrents?limit=5", {
-        headers: { Authorization: `Bearer ${settings?.rd_token}` },
-      }).then((r) => r.json()),
+    const [rdUser, rdTorrents, plexCheck, jellyfinCheck] =
+      await Promise.allSettled([
+        // Real-Debrid user info (only if using RD)
+        provider === "realdebrid" && settings?.rd_token
+          ? fetch("https://api.real-debrid.com/rest/1.0/user", {
+              headers: { Authorization: `Bearer ${settings.rd_token}` },
+            }).then((r) => r.json())
+          : Promise.resolve(null),
 
-      // Plex API check
-      settings?.plex_url && settings?.plex_token
-        ? fetch(
-            `${settings.plex_url}/identity?X-Plex-Token=${settings.plex_token}`,
-          ).then((r) => ({ ok: r.ok }))
-        : Promise.resolve({ ok: false }),
+        // Real-Debrid recent torrents (only if using RD)
+        provider === "realdebrid" && settings?.rd_token
+          ? fetch("https://api.real-debrid.com/rest/1.0/torrents?limit=5", {
+              headers: { Authorization: `Bearer ${settings.rd_token}` },
+            }).then((r) => r.json())
+          : Promise.resolve([]),
 
-      // Jellyfin API check - CORRECT ENDPOINT
-      settings?.jellyfin_url && settings?.jellyfin_token
-        ? fetch(
-            `${settings.jellyfin_url}/System/Info`,
-            {
-              headers: { 
-                "X-Emby-Token": settings.jellyfin_token 
+        // Plex API check
+        settings?.plex_url && settings?.plex_token
+          ? fetch(
+              `${settings.plex_url}/identity?X-Plex-Token=${settings.plex_token}`,
+            ).then((r) => ({ ok: r.ok }))
+          : Promise.resolve({ ok: false }),
+
+        // Jellyfin API check
+        settings?.jellyfin_url && settings?.jellyfin_token
+          ? fetch(`${settings.jellyfin_url}/System/Info`, {
+              headers: {
+                "X-Emby-Token": settings.jellyfin_token,
               },
-            }
-          ).then((r) => ({ ok: r.ok }))
-        : Promise.resolve({ ok: false }),
-    ]);
+            }).then((r) => ({ ok: r.ok }))
+          : Promise.resolve({ ok: false }),
+      ]);
+
+    const rdStatus =
+      provider === "realdebrid" && rdUser.status === "fulfilled" && !rdUser.value?.error
+        ? "connected"
+        : provider === "realdebrid"
+          ? "error"
+          : "disconnected";
 
     return NextResponse.json({
       rd: {
-        status:
-          rdUser.status === "fulfilled" && !rdUser.value.error
-            ? "connected"
-            : "error",
-        user: rdUser.status === "fulfilled" ? rdUser.value : null,
-        torrents: rdTorrents.status === "fulfilled" ? rdTorrents.value : [],
+        status: rdStatus,
+        user:
+          provider === "realdebrid" && rdUser.status === "fulfilled"
+            ? rdUser.value
+            : null,
+        torrents:
+          provider === "realdebrid" && rdTorrents.status === "fulfilled"
+            ? rdTorrents.value
+            : [],
+        provider,
       },
       plex: {
         status:

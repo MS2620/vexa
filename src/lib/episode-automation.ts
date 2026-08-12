@@ -3,6 +3,7 @@ import { createSymlinks } from "@/lib/symlinks";
 import { addLog } from "@/lib/logger";
 import { notifyUsers } from "@/lib/notifications";
 import { access } from "fs/promises";
+import { createDebridClient, DebridFile } from "@/lib/debrid/client";
 
 type Stream = {
   infoHash?: string;
@@ -249,11 +250,33 @@ async function downloadInfoHash(
 ): Promise<boolean> {
   const db = await openDb();
   const settings = await db.get(
-    "SELECT rd_token, plex_url, plex_token, plex_tv_lib_id, jellyfin_url, jellyfin_token, jellyfin_tv_lib_id, tmdb_key FROM settings WHERE id = 1",
+    `SELECT
+       debrid_provider,
+       rd_token,
+       torbox_api_key,
+       plex_url,
+       plex_token,
+       plex_tv_lib_id,
+       jellyfin_url,
+       jellyfin_token,
+       jellyfin_tv_lib_id,
+       tmdb_key
+     FROM settings WHERE id = 1`,
   );
 
-  if (!settings?.rd_token) return false;
+  // Build debrid client (Real-Debrid or TorBox)
+  let client;
+  try {
+    client = createDebridClient({
+      provider: settings?.debrid_provider || "realdebrid",
+      rd_token: settings?.rd_token || undefined,
+      torbox_api_key: settings?.torbox_api_key || undefined,
+    });
+  } catch {
+    return false;
+  }
 
+  // Avoid duplicate requests for the same episode
   const exists = await db.get(
     `SELECT id FROM requests
      WHERE media_type = 'tv' AND tmdb_id = ? AND season = ? AND episode = ?
@@ -264,80 +287,61 @@ async function downloadInfoHash(
   if (exists) return true;
 
   const magnet = `magnet:?xt=urn:btih:${infoHash}`;
-  const params = new URLSearchParams();
-  params.append("magnet", magnet);
 
-  const rdRes = await fetch(
-    "https://api.real-debrid.com/rest/1.0/torrents/addMagnet",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${settings.rd_token}` },
-      body: params,
-    },
-  );
-
-  const rdData = await rdRes.json();
-  if (rdData.error || !rdData.id) return false;
-
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  const infoRes = await fetch(
-    `https://api.real-debrid.com/rest/1.0/torrents/info/${rdData.id}`,
-    { headers: { Authorization: `Bearer ${settings.rd_token}` } },
-  );
-  const infoData = await infoRes.json();
-  if (!infoData.files || infoData.files.length === 0) return false;
-
-  const videoFiles = infoData.files.filter(
-    (f: { path: string; bytes: number; id: number }) => {
-      const isVideo = f.path.match(/\.(mkv|mp4|avi)$/i);
-      const isNotSample = !f.path.toLowerCase().includes("sample");
-      const isLargeEnough = f.bytes > 30 * 1024 * 1024;
-      return isVideo && isNotSample && isLargeEnough;
-    },
-  );
-
-  const filesToSelect =
-    videoFiles.length > 0
-      ? videoFiles.map((f: { id: number }) => f.id).join(",")
-      : infoData.files
-          .sort(
-            (a: { bytes: number }, b: { bytes: number }) => b.bytes - a.bytes,
-          )[0]
-          .id.toString();
-
-  const fileParams = new URLSearchParams();
-  fileParams.append("files", filesToSelect);
-
-  await fetch(
-    `https://api.real-debrid.com/rest/1.0/torrents/selectFiles/${rdData.id}`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${settings.rd_token}` },
-      body: fileParams,
-    },
-  );
-
-  let selectedInfoData = infoData;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 750));
-    const selectedInfoRes = await fetch(
-      `https://api.real-debrid.com/rest/1.0/torrents/info/${rdData.id}`,
-      { headers: { Authorization: `Bearer ${settings.rd_token}` } },
-    );
-    const latest = await selectedInfoRes.json();
-
-    if (latest?.files?.some((f: { selected?: number }) => f.selected === 1)) {
-      selectedInfoData = latest;
-      break;
-    }
-
-    selectedInfoData = latest;
+  // 1. Add magnet to provider
+  let torrentId: string | number;
+  try {
+    const added = await client.addMagnet(magnet, title);
+    torrentId = added.id;
+  } catch (e) {
+    console.error("[automation] addMagnet failed:", e);
+    return false;
   }
 
-  // Create symlinks for both Plex and Jellyfin
+  // 2. Wait briefly and fetch info
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  let info;
+  try {
+    info = await client.getTorrentInfo(torrentId);
+  } catch (e) {
+    console.error("[automation] getTorrentInfo failed:", e);
+    return false;
+  }
+
+  if (!info.files || info.files.length === 0) return false;
+
+  const files = info.files as DebridFile[];
+
+  const videoFiles = files.filter((f) => {
+    const isVideo = f.path.match(/\.(mkv|mp4|avi)$/i);
+    const isNotSample = !f.path.toLowerCase().includes("sample");
+    const isLargeEnough = f.bytes > 30 * 1024 * 1024;
+    return isVideo && isNotSample && isLargeEnough;
+  });
+
+  const fileIds =
+    videoFiles.length > 0
+      ? videoFiles.map((f) => f.id)
+      : [files.sort((a, b) => b.bytes - a.bytes)[0].id];
+
+  try {
+    await client.selectFiles(torrentId, fileIds);
+  } catch (e) {
+    console.error("[automation] selectFiles failed:", e);
+    // For TorBox this is effectively a no-op; continue anyway
+  }
+
+  // Optional re-poll (mainly useful for RD)
+  try {
+    info = await client.getTorrentInfo(torrentId);
+  } catch {
+    // ignore, keep previous info
+  }
+
+  // Create symlinks/hardlinks via existing helper
   const { plex: plexPaths, jellyfin: jellyfinPaths } = await createSymlinks({
-    infoData: selectedInfoData,
+    infoData: { filename: title, files: info.files },
     title,
     tmdbId,
     mediaType: "tv",
@@ -363,6 +367,7 @@ async function downloadInfoHash(
     }
   }
 
+  // Insert request record
   await db.run(
     `INSERT INTO requests
       (tmdb_id, title, poster_path, status, requested_by, media_type, season, episode, info_hash, approved)
@@ -381,16 +386,14 @@ async function downloadInfoHash(
     ],
   );
 
-  // Trigger library scans for both services
+  // Trigger library scans
   const scansTriggered: string[] = [];
 
-  // Plex scan
   if (settings.plex_url && settings.plex_token && settings.plex_tv_lib_id) {
     try {
       const refreshRes = await fetch(
         `${settings.plex_url}/library/sections/${settings.plex_tv_lib_id}/refresh?X-Plex-Token=${settings.plex_token}`,
       );
-
       if (refreshRes.ok) {
         scansTriggered.push("Plex");
         console.log(`[automation] Plex scan triggered for ${title}`);
@@ -400,8 +403,11 @@ async function downloadInfoHash(
     }
   }
 
-  // Jellyfin scan
-  if (settings.jellyfin_url && settings.jellyfin_token && settings.jellyfin_tv_lib_id) {
+  if (
+    settings.jellyfin_url &&
+    settings.jellyfin_token &&
+    settings.jellyfin_tv_lib_id
+  ) {
     try {
       const scanRes = await fetch(
         `${settings.jellyfin_url}/Library/Refresh?X-Emby-Token=${settings.jellyfin_token}`,
@@ -410,7 +416,7 @@ async function downloadInfoHash(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             LibraryOptions: {
-              Name: settings.jellyfin_tv_lib_id, // or fetch by name
+              Name: settings.jellyfin_tv_lib_id,
             },
           }),
         },
@@ -425,13 +431,16 @@ async function downloadInfoHash(
     }
   }
 
-  // Send notification
   if (scansTriggered.length > 0) {
     setTimeout(async () => {
       await notifyUsers({
         type: "automation",
         title: `${title} added to library`,
-        body: `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")} was added and ${scansTriggered.join(" & ")} refresh triggered.`,
+        body: `S${String(season).padStart(2, "0")}E${String(
+          episode,
+        ).padStart(2, "0")} was added and ${scansTriggered.join(
+          " & ",
+        )} refresh triggered.`,
         targetPath: `/media/tv/${tmdbId}`,
       });
     }, 5000);

@@ -69,6 +69,8 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY,
       rd_token TEXT,
+      debrid_provider TEXT,
+      torbox_api_key TEXT,
       tmdb_key TEXT,
       plex_url TEXT,
       plex_token TEXT,
