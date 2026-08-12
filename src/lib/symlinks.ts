@@ -12,7 +12,7 @@ interface SymlinkParams {
   tmdbId: string | null;
   mediaType: "movie" | "tv";
   season: number | null;
-  episode?: number | null; // NEW
+  episode?: number | null;
   tmdbKey: string;
 }
 
@@ -28,10 +28,40 @@ function buildVersionLabel(filePath: string): string {
   return classifyResolution(filePath);
 }
 
-function episodeTag(season: number | null, episode: number | null | undefined): string {
-  const s = String(season ?? 1).padStart(2, "0");
-  const e = String(episode ?? 1).padStart(2, "0");
-  return `S${s}E${e}`;
+// Try to pull SxxExx (or just Exx) out of the actual filename first.
+// Falls back to the request-level season/episode if parsing fails.
+function resolveEpisodeTag(
+  filePath: string,
+  fallbackSeason: number | null,
+  fallbackEpisode: number | null | undefined,
+): { season: number; episode: number } {
+  const name = path.basename(filePath);
+
+  // Match S01E06, s1e6, 1x06, etc.
+  const seMatch = name.match(/[Ss](\d{1,2})[Ee](\d{1,3})/);
+  if (seMatch) {
+    return { season: parseInt(seMatch[1], 10), episode: parseInt(seMatch[2], 10) };
+  }
+
+  const xMatch = name.match(/(\d{1,2})[xX](\d{1,3})/);
+  if (xMatch) {
+    return { season: parseInt(xMatch[1], 10), episode: parseInt(xMatch[2], 10) };
+  }
+
+  // Match standalone Exx when season is already known from context
+  const eOnlyMatch = name.match(/[Ee](\d{2,3})(?!\d)/);
+  if (eOnlyMatch && fallbackSeason) {
+    return { season: fallbackSeason, episode: parseInt(eOnlyMatch[1], 10) };
+  }
+
+  return {
+    season: fallbackSeason ?? 1,
+    episode: fallbackEpisode ?? 1,
+  };
+}
+
+function episodeTag(season: number, episode: number): string {
+  return `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
 }
 
 export async function createSymlinks({
@@ -73,7 +103,6 @@ export async function createSymlinks({
   }
 
   const baseName = year ? `${title} (${year})` : title;
-  const epTag = mediaType === "tv" ? episodeTag(season, episode) : "";
 
   const videoFiles = infoData.files.filter((f) =>
     /\.(mkv|mp4|avi)$/i.test(f.path),
@@ -94,6 +123,14 @@ export async function createSymlinks({
     const ext = path.extname(file.path) || ".mkv";
     const versionLabel = buildVersionLabel(file.path);
 
+    // Resolve per-file episode info (handles season packs correctly)
+    const resolved =
+      mediaType === "tv"
+        ? resolveEpisodeTag(file.path, season, episode)
+        : { season: season ?? 1, episode: episode ?? 1 };
+
+    const epTag = episodeTag(resolved.season, resolved.episode);
+
     // ---------- Plex ----------
     {
       const plexTargetDir = path.join(
@@ -101,12 +138,11 @@ export async function createSymlinks({
         mediaType === "movie" ? "Movies" : "TV_Shows",
         baseName,
         ...(mediaType === "tv"
-          ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
+          ? [`Season ${String(resolved.season).padStart(2, "0")}`]
           : []),
       );
       await fs.mkdir(plexTargetDir, { recursive: true });
 
-      // For TV: include SxxExx so Plex can match the episode correctly
       const plexFileName =
         mediaType === "tv"
           ? `${baseName} - ${epTag}${ext}`
@@ -134,14 +170,13 @@ export async function createSymlinks({
         mediaType === "movie" ? "Movies" : "TV_Shows",
         baseName,
         ...(mediaType === "tv"
-          ? [`Season ${String(season ?? 1).padStart(2, "0")}`]
+          ? [`Season ${String(resolved.season).padStart(2, "0")}`]
           : []),
       );
       await fs.mkdir(jfTargetDir, { recursive: true });
 
       let jfFileName: string;
       if (mediaType === "tv") {
-        // e.g. "Lioness (2023) - S01E01 - 4K.mkv"
         jfFileName =
           versionLabel && versionLabel !== "SD"
             ? `${baseName} - ${epTag} - ${versionLabel}${ext}`
