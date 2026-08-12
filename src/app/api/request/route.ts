@@ -229,6 +229,7 @@ export async function POST(req: Request) {
       tmdbId: tmdbId || null,
       mediaType: requestedMediaType,
       season: season || null,
+      episode: episode || null,
       tmdbKey: settings.tmdb_key || "",
     })
       .then(async ({ plex: plexPaths, jellyfin: jellyfinPaths }) => {

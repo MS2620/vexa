@@ -346,6 +346,7 @@ async function downloadInfoHash(
     tmdbId,
     mediaType: "tv",
     season,
+    episode,
     tmdbKey: settings.tmdb_key || "",
   });
 

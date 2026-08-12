@@ -12,10 +12,10 @@ interface SymlinkParams {
   tmdbId: string | null;
   mediaType: "movie" | "tv";
   season: number | null;
+  episode?: number | null; // NEW
   tmdbKey: string;
 }
 
-// crude resolution classifier from a filename
 function classifyResolution(p: string): string {
   const s = p.toLowerCase();
   if (s.includes("2160p") || s.includes("4k") || s.includes("uhd")) return "4K";
@@ -24,11 +24,14 @@ function classifyResolution(p: string): string {
   return "SD";
 }
 
-// sanity-clean label (optional)
 function buildVersionLabel(filePath: string): string {
-  const res = classifyResolution(filePath);
-  // you can add more info here later (HDR, DV, etc)
-  return res;
+  return classifyResolution(filePath);
+}
+
+function episodeTag(season: number | null, episode: number | null | undefined): string {
+  const s = String(season ?? 1).padStart(2, "0");
+  const e = String(episode ?? 1).padStart(2, "0");
+  return `S${s}E${e}`;
 }
 
 export async function createSymlinks({
@@ -37,12 +40,12 @@ export async function createSymlinks({
   tmdbId,
   mediaType,
   season,
+  episode,
   tmdbKey,
 }: SymlinkParams): Promise<{ plex: string[]; jellyfin: string[] }> {
   const plexPaths: string[] = [];
   const jellyfinPaths: string[] = [];
 
-  // Skip if zurg mount not available
   try {
     await fs.access(DEBRID_MOUNT);
   } catch {
@@ -52,7 +55,6 @@ export async function createSymlinks({
     return { plex: plexPaths, jellyfin: jellyfinPaths };
   }
 
-  // Fetch year from TMDB
   let year = "";
   if (tmdbId && tmdbKey) {
     try {
@@ -71,8 +73,8 @@ export async function createSymlinks({
   }
 
   const baseName = year ? `${title} (${year})` : title;
+  const epTag = mediaType === "tv" ? episodeTag(season, episode) : "";
 
-  // Video files only (selection already handled upstream via client.selectFiles)
   const videoFiles = infoData.files.filter((f) =>
     /\.(mkv|mp4|avi)$/i.test(f.path),
   );
@@ -83,7 +85,6 @@ export async function createSymlinks({
   }
 
   for (const file of videoFiles) {
-    // Build source path (handles flat vs folder torrents)
     const parts = file.path.replace(/^\//, "").split("/");
     const sourcePath =
       parts.length === 1
@@ -93,7 +94,7 @@ export async function createSymlinks({
     const ext = path.extname(file.path) || ".mkv";
     const versionLabel = buildVersionLabel(file.path);
 
-    // ---------- Plex: keep scene-friendly names ----------
+    // ---------- Plex ----------
     {
       const plexTargetDir = path.join(
         PLEX_SYMLINK_ROOT,
@@ -105,10 +106,13 @@ export async function createSymlinks({
       );
       await fs.mkdir(plexTargetDir, { recursive: true });
 
-      const plexTargetPath = path.join(
-        plexTargetDir,
-        path.basename(file.path),
-      );
+      // For TV: include SxxExx so Plex can match the episode correctly
+      const plexFileName =
+        mediaType === "tv"
+          ? `${baseName} - ${epTag}${ext}`
+          : path.basename(file.path);
+
+      const plexTargetPath = path.join(plexTargetDir, plexFileName);
 
       try {
         await fs.symlink(sourcePath, plexTargetPath);
@@ -123,7 +127,7 @@ export async function createSymlinks({
       }
     }
 
-    // ---------- Jellyfin: TMDB-based names + version suffix ----------
+    // ---------- Jellyfin ----------
     if (JELLYFIN_LINK_ROOT) {
       const jfTargetDir = path.join(
         JELLYFIN_LINK_ROOT,
@@ -135,11 +139,19 @@ export async function createSymlinks({
       );
       await fs.mkdir(jfTargetDir, { recursive: true });
 
-      // Jellyfin grouping rule: file base name must exactly match folder, suffix after " - "
-      const jfFileName =
-        versionLabel && versionLabel !== "SD"
-          ? `${baseName} - ${versionLabel}${ext}`
-          : `${baseName}${ext}`;
+      let jfFileName: string;
+      if (mediaType === "tv") {
+        // e.g. "Lioness (2023) - S01E01 - 4K.mkv"
+        jfFileName =
+          versionLabel && versionLabel !== "SD"
+            ? `${baseName} - ${epTag} - ${versionLabel}${ext}`
+            : `${baseName} - ${epTag}${ext}`;
+      } else {
+        jfFileName =
+          versionLabel && versionLabel !== "SD"
+            ? `${baseName} - ${versionLabel}${ext}`
+            : `${baseName}${ext}`;
+      }
 
       const jfTargetPath = path.join(jfTargetDir, jfFileName);
 

@@ -117,6 +117,7 @@ export async function POST(
       tmdbId: req.tmdb_id || null,
       mediaType: (req.media_type as "movie" | "tv") || "movie",
       season: req.season || null,
+      episode: req.episode || null,
       tmdbKey: settings.tmdb_key || "",
     });
 
